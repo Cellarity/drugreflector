@@ -435,38 +435,34 @@ class SignatureRefinement:
         if self.learned_signatures is None:
             raise ValueError("No learned signatures available. Call compute_learned_signatures first.")
         
-        if isinstance(self.learned_signatures, dict):
-            # Multiple signatures
-            refined_sigs = {}
-            for name, learned_sig in self.learned_signatures.items():
-                # Find common genes
-                common_genes = self.starting_signature.index.intersection(learned_sig.index)
-                if len(common_genes) == 0:
-                    warnings.warn(f"No common genes between starting and learned signature {name}")
-                    continue
-                
-                if len(common_genes) < len(self.starting_signature.index):
-                    warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signature {name}")
-                
-                # Compute refined signature
-                starting_subset = self.starting_signature.loc[common_genes]
-                learned_subset = learned_sig.loc[common_genes]
-                
-                refined_sig = (1 - learning_rate) * starting_subset + learning_rate * learned_subset
-                refined_sigs[name] = refined_sig
-            
-            self.refined_signatures = refined_sigs
-        else:
-            # Single signature
-            common_genes = self.starting_signature.index.intersection(self.learned_signatures.index)
-            if len(common_genes) == 0:
-                raise ValueError("No common genes between starting and learned signatures")
-            
-            if len(common_genes) < len(self.starting_signature.index):
-                warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signatures")
-            
-            # Compute refined signature
-            starting_subset = self.starting_signature.loc[common_genes]
-            learned_subset = self.learned_signatures.loc[common_genes]
-            
-            self.refined_signatures = (1 - learning_rate) * starting_subset + learning_rate * learned_subset
+        # Find common genes between starting signature and learned signatures
+        common_genes = self.starting_signature.index.intersection(self.learned_signatures.var_names)
+        if len(common_genes) == 0:
+            raise ValueError("No common genes between starting and learned signatures")
+        
+        if len(common_genes) < len(self.starting_signature.index):
+            warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signatures")
+        
+        # Get starting signature subset for common genes
+        starting_subset = self.starting_signature.loc[common_genes]
+        
+        # Create refined signatures AnnData with same structure as learned signatures
+        refined_adata = self.learned_signatures.copy()
+        
+        # Subset to common genes
+        gene_mask = refined_adata.var_names.isin(common_genes)
+        refined_adata = refined_adata[:, gene_mask].copy()
+        
+        # Get learned scores (main signature values) from .X
+        learned_scores = refined_adata.X  # Shape: (n_signatures, n_common_genes)
+        
+        # Compute refined signatures: (1-lr) * starting + lr * learned
+        refined_scores = np.zeros_like(learned_scores)
+        for i in range(learned_scores.shape[0]):
+            refined_scores[i, :] = (1 - learning_rate) * starting_subset.values + learning_rate * learned_scores[i, :]
+        
+        # Update .X with refined scores
+        refined_adata.X = refined_scores
+        
+        # Store the refined signatures
+        self.refined_signatures = refined_adata
