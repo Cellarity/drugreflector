@@ -237,7 +237,8 @@ class SignatureRefinement:
         
         self.readouts = readout_series
         return readout_series
-    
+
+
     def load_paired_readouts(self, adata: AnnData, compound_id_obs_col: str, 
                            readouts: Union[pd.DataFrame, pd.Series],
                            normalized_counts_layer: Optional[str] = None, 
@@ -423,7 +424,7 @@ class SignatureRefinement:
                 sigdata.layers[col] = learned_sig[col].values.reshape(1,-1)
             self.learned_signatures = sigdata
     
-    def compute_refined_signatures(self, learning_rate: float = 0.5):
+    def compute_refined_signatures(self, learning_rate: float = 0.5, scale_learned_sig=True):
         """
         Compute refined signatures by combining starting and learned signatures.
         
