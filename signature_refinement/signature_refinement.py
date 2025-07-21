@@ -161,7 +161,8 @@ class SignatureRefinement:
         self._sample_id_obs_cols = sample_id_obs_cols if sample_id_obs_cols else []
         self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
     
-    def load_normalized_data(self, adata: AnnData, compound_id_obs_col: str, layer: Optional[str] = None,  
+    def load_normalized_data(self, adata: AnnData, compound_id_obs_col: str, layer: Optional[str] = None,
+                            sample_id_obs_cols: Optional[List[str]] = None,
                             signature_id_obs_cols: Optional[List[str]] = None):
         """
         Load normalized transcriptional data.
@@ -174,8 +175,13 @@ class SignatureRefinement:
             Column identifying compounds
         layer : str, optional
             Layer containing normalized data (e.g., log(TPM)). If None, uses .X
+        sample_id_obs_cols : list of str, optional
+            Columns identifying samples for pseudobulking. Different samples can have
+            the same compound (e.g., replicates) and will be treated as separate
+            measurements in learned signature computation.
         signature_id_obs_cols : list of str, optional
-            Columns uniquely identifying signatures
+            Columns uniquely identifying different experimental conditions that will
+            yield separate learned/refined signatures
         """
         # Use specified layer or .X
         if layer and layer in adata.layers:
@@ -185,22 +191,36 @@ class SignatureRefinement:
         else:
             temp_adata = adata.copy()
         
-        # Set up signature ID columns
+        # Set up pseudobulking columns
+        if sample_id_obs_cols is None:
+            sample_id_obs_cols = []
         if signature_id_obs_cols is None:
             signature_id_obs_cols = []
-        
-        # Pseudobulk using mean (not sum) for normalized data
-        pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
-        final_adata = pseudobulk_adata(
+            
+        # Step 1: Pseudobulk by compound + sample_id columns (mean for normalized data)
+        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols
+        step1_adata = pseudobulk_adata(
             temp_adata,
-            sample_id_obs_cols=pseudobulk_cols,
+            sample_id_obs_cols=sample_pseudobulk_cols,
             method='mean'
         )
+        
+        # Step 2: If signature_id columns exist, take mean over them per compound
+        if signature_id_obs_cols:
+            # Combine compound with signature columns for final pseudobulking
+            final_pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
+            final_adata = pseudobulk_adata(
+                step1_adata,
+                sample_id_obs_cols=final_pseudobulk_cols,
+                method='mean'
+            )
+        else:
+            final_adata = step1_adata
         
         # Store results
         self.expr = final_adata
         self._compound_id_obs_col = compound_id_obs_col
-        self._sample_id_obs_cols = []  # Not used for normalized data
+        self._sample_id_obs_cols = sample_id_obs_cols if sample_id_obs_cols else []
         self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
 
     def load_phenotypic_readouts(self, readouts: Union[pd.DataFrame, pd.Series], 
@@ -302,6 +322,7 @@ class SignatureRefinement:
         if normalized_counts_layer:
             self.load_normalized_data(
                 adata, compound_id_obs_col, layer=normalized_counts_layer,
+                sample_id_obs_cols=sample_id_obs_cols,
                 signature_id_obs_cols=signature_id_obs_cols
             )
         elif raw_counts_layer:
