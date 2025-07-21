@@ -1,0 +1,56 @@
+# Python files to include
+!*.py
+!*.ipynb
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Model checkpoints and data files
+*.pt
+*.pth
+*.h5ad
+*.pkl
+*.pickle
+*.json
+models/*.pt
+models/*.pth
+models/*.h5ad
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+.env
+.venv
+env/
+venv/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Output files
+*.csv
+*.tsv
+*.xlsx
+outputs/
+results/
+
+# Documentation build
+docs/_build/
