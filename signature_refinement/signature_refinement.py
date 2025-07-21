@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import warnings
 from typing import Optional, Union, List
-from anndata import AnnData
+from anndata import AnnData, concat
 from scipy.stats import pearsonr
 import scipy.sparse as sp
 import sys
@@ -374,8 +374,7 @@ class SignatureRefinement:
         expr_mask = expr_compounds.isin(common_compounds)
         readout_mask = readout_compounds.isin(common_compounds)
         
-        filtered_expr = self.expr[expr_mask,:].copy()
-        filtered_readouts = self.readouts[readout_mask].values
+        filtered_expr = self.expr[expr_mask,:].copy() # expr with compounds
         
         # If we have signature ID columns, compute signatures for each combination
         if self._signature_id_obs_cols:
@@ -394,19 +393,35 @@ class SignatureRefinement:
                 
                 group_readouts = self.readouts[group_expr.obs[self._compound_id_obs_col].values]
 
-                signature_scores = self._learned_signature(group_expr.X,group_readouts, corr_method=corr_method)
-                learned_sigs[signame] = pd.Series(signature_scores, index=self.expr.var_names)
+                signature_scores = pd.DataFrame(self._learned_signature(group_expr.X,group_readouts, corr_method=corr_method, include_stats=True))
+                signature_scores.index = group_expr.var_names
+                
+                learned_sigs[signame] = signature_scores
 
-            learned_sig_df = pd.DataFrame(learned_sigs).transpose()
-            obs = learned_sig_df.index.to_frame(name=self._signature_id_obs_cols, index=False)
-            self.learned_signatures = AnnData(learned_sig_df.values, obs=obs,
-                                              var = pd.DataFrame(index=learned_sig_df.columns))
+            learned_sig_adatas = []
+            for signame, sig in learned_sigs.items():
+                print(sig)
+                sigdata = AnnData(sig['scores'].values.reshape(1,-1), var = pd.DataFrame(index=sig.index),
+                                     obs=pd.DataFrame(np.array(list(signame)).reshape(1,-1), columns=self._signature_id_obs_cols)
+                                    )
+                for col in sig.columns:
+                    sigdata.layers[col] = sig[col].values.reshape(1,-1)
+                learned_sig_adatas.append(sigdata)
+            
+            
+            self.learned_signatures = concat(learned_sig_adatas, axis=0)
                                               
         else:
             # Single signature for all data
-            signature_readouts = filtered_readouts.loc[filtered_expr.obs[self._compound_id_obs_col].values]
-            signature_scores = self._learned_signature(filtered_expr.X, signature_readouts, corr_method=corr_method)
-            self.learned_signatures = pd.Series(signature_scores, index=self.expr.var_names)
+            signature_readouts = self.readouts[filtered_expr.obs[self._compound_id_obs_col].values]
+            learned_sig = pd.DataFrame(self._learned_signature(filtered_expr.X, signature_readouts, corr_method=corr_method,
+                                                      include_stats=True))
+            
+            sigdata = AnnData(learned_sig['scores'].values.reshape(1,-1), var = pd.DataFrame(index=learned_sig.index))
+            
+            for col in learned_sig.columns:
+                sigdata.layers[col] = learned_sig[col].values.reshape(1,-1)
+            self.learned_signatures = sigdata
     
     def compute_refined_signatures(self, learning_rate: float = 0.5):
         """
