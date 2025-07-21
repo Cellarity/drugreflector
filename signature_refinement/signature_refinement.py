@@ -452,65 +452,74 @@ class SignatureRefinement:
         if len(common_genes) < len(self.starting_signature.index):
             warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signatures")
         
-        # Create refined signatures AnnData with same gene set as starting signature
-        n_signatures = self.learned_signatures.n_obs
-        n_starting_genes = len(self.starting_signature)
+        # Create list to store refined signatures as pandas Series
+        refined_signatures = []
         
-        # Initialize refined signatures with starting signature values for all genes
-        refined_scores = np.tile(self.starting_signature.values, (n_signatures, 1))
-        
-        # Create AnnData with full starting signature gene set
-        refined_adata = AnnData(
-            X=refined_scores,
-            obs=self.learned_signatures.obs.copy(),
-            var=pd.DataFrame(index=self.starting_signature.index)
-        )
-        
-        # Copy layers structure from learned signatures (but expand to full gene set)
-        if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
-            for layer_name, layer_data in self.learned_signatures.layers.items():
-                # Initialize layer with zeros for all genes
-                full_layer = np.zeros((n_signatures, n_starting_genes))
-                refined_adata.layers[layer_name] = full_layer
-        
-        # Now perform interpolation only for common genes
-        if len(common_genes) > 0:
-            # Get indices of common genes in starting signature
-            starting_gene_indices = [self.starting_signature.index.get_loc(gene) for gene in common_genes]
+        # Process each learned signature
+        for i in range(self.learned_signatures.n_obs):
+            # 1. Initialize refined signature as copy of starting signature
+            refined_sig = self.starting_signature.copy()
             
-            # Get learned scores for common genes only
-            learned_subset = self.learned_signatures[:, self.learned_signatures.var_names.isin(common_genes)]
-            learned_scores_common = learned_subset.X  # Shape: (n_signatures, n_common_genes)
+            # 2. Get learned signature for this row as pandas Series
+            learned_sig = pd.Series(
+                self.learned_signatures.X[i, :],
+                index=self.learned_signatures.var_names
+            )
             
-            # Get starting signature values for common genes
-            starting_subset = self.starting_signature.loc[common_genes]
+            # 3. Get learned scores for common genes using pandas indexing
+            learned_common = learned_sig.loc[common_genes]
+            starting_common = self.starting_signature.loc[common_genes]
             
-            # Scale learned signatures if requested
+            # 4. Scale learned signature if requested
             if scale_learned_sig:
-                starting_sig_std = starting_subset.std()
-                learned_scores_std = np.std(learned_scores_common, axis=1).reshape(-1, 1)
-                # Where learned signature has zero std, set learned scores to zero (no contribution)
-                zero_std_mask = learned_scores_std.flatten() == 0
-                learned_scores_common[zero_std_mask, :] = 0
-                # Scale non-zero std signatures
-                nonzero_std_mask = ~zero_std_mask
-                if np.any(nonzero_std_mask):
-                    learned_scores_common[nonzero_std_mask, :] = starting_sig_std * (
-                        learned_scores_common[nonzero_std_mask, :] / learned_scores_std[nonzero_std_mask]
-                    )
+                starting_sig_std = starting_common.std()
+                learned_sig_std = learned_common.std()
+                
+                if learned_sig_std == 0:
+                    # Set learned scores to zero (no contribution)
+                    learned_common = pd.Series(0, index=common_genes)
+                else:
+                    # Scale to match starting signature std
+                    learned_common = learned_common * (starting_sig_std / learned_sig_std)
             
-            # Perform interpolation for common genes only
-            for i in range(n_signatures):
-                refined_adata.X[i, starting_gene_indices] = (
-                    (1 - learning_rate) * starting_subset.values + 
-                    learning_rate * learned_scores_common[i, :]
-                )
+            # 5. Perform interpolation for common genes using pandas indexing
+            refined_sig.loc[common_genes] = (
+                (1 - learning_rate) * starting_common + 
+                learning_rate * learned_common
+            )
             
-            # Update layers for common genes
-            if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
-                for layer_name, layer_data in learned_subset.layers.items():
-                    for i in range(n_signatures):
-                        refined_adata.layers[layer_name][i, starting_gene_indices] = layer_data[i, :]
+            refined_signatures.append(refined_sig)
         
-        # Store the refined signatures
-        self.refined_signatures = refined_adata
+        # Convert refined signatures to AnnData format
+        if len(refined_signatures) > 0:
+            # Stack all refined signatures into a matrix
+            refined_matrix = np.vstack([sig.values for sig in refined_signatures])
+            
+            # Create AnnData with full starting signature gene set
+            refined_adata = AnnData(
+                X=refined_matrix,
+                obs=self.learned_signatures.obs.copy(),
+                var=pd.DataFrame(index=self.starting_signature.index)
+            )
+            
+            # Copy layers structure from learned signatures (but expand to full gene set)
+            if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
+                for layer_name, layer_data in self.learned_signatures.layers.items():
+                    # Initialize layer with zeros for all genes
+                    full_layer = np.zeros((len(refined_signatures), len(self.starting_signature)))
+                    
+                    # Copy layer data for common genes only
+                    for i in range(len(refined_signatures)):
+                        learned_layer_sig = pd.Series(
+                            layer_data[i, :],
+                            index=self.learned_signatures.var_names
+                        )
+                        # Use pandas indexing to align common genes
+                        for gene in common_genes:
+                            gene_idx = self.starting_signature.index.get_loc(gene)
+                            full_layer[i, gene_idx] = learned_layer_sig.loc[gene]
+                    
+                    refined_adata.layers[layer_name] = full_layer
+            
+            # Store the refined signatures
+            self.refined_signatures = refined_adata
