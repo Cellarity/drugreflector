@@ -15,7 +15,7 @@ import scipy.stats as stats
 from scipy.special import softmax
 
 from .ensemble_model import EnsembleModel
-from .utils import compute_vscores
+from .utils import compute_vscores, clip_rescale_rows
 
 
 class DrugReflectorV35:
@@ -77,7 +77,16 @@ class DrugReflectorV35:
             Prediction scores with compounds as variables
         """
         # Compute v-scores and apply preprocessing
-        self._X_landmarks = compute_vscores(adata, transitions)
+        vscores = compute_vscores(adata, transitions)
+
+        # Clip and rescale rows
+        clip_rescale_rows(vscores.X, clip=2, target_std=1)
+
+        # Standardize gene names
+        vscores.var_names = vscores.var_names.str.upper()
+        vscores.var_names_make_unique()
+
+        self._X_landmarks = vscores
         self._weights_x = None
         
         # Get ensemble predictions

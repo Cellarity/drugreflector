@@ -67,12 +67,6 @@ def compute_vscores(adata, transitions=None, mute=False):
             warnings.warn('Assuming passed representation is v-score.', stacklevel=1)
         vscores = adata.copy()
 
-    # Standardize gene names
-    vscores.var_names = vscores.var_names.str.upper()
-    vscores.var_names_make_unique()
-    
-    # Apply clipping and rescaling
-    clip_rescale_rows(X=vscores.X, clip=2, target_std=1)
     
     return vscores
 
