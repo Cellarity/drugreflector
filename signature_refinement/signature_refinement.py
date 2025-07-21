@@ -1,0 +1,472 @@
+"""
+Signature refinement for transcriptional signatures using experimental data.
+
+This module provides functionality to refine transcriptional signatures based on
+paired transcriptional + phenotypic data using correlation analysis.
+"""
+
+import numpy as np
+import pandas as pd
+import warnings
+from typing import Optional, Union, List
+from anndata import AnnData
+from scipy.stats import pearsonr
+import sys
+import os
+
+# Add parent directory to path to access utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import pseudobulk_adata
+
+
+class SignatureRefinement:
+    """
+    Refine transcriptional signatures using paired transcriptional + phenotypic data.
+    
+    This class allows updating a starting transcriptional signature based on 
+    experimental data that pairs gene expression with phenotypic readouts.
+    
+    Parameters
+    ----------
+    starting_signature : AnnData or pd.Series
+        Starting signature values. If AnnData, should have genes in columns and 1 row.
+        If Series, should be keyed by genes.
+    """
+
+    def __init__(self, starting_signature: Union[AnnData, pd.Series]):
+        # Handle different input types for starting signature
+        if isinstance(starting_signature, AnnData):
+            if starting_signature.n_obs != 1:
+                raise ValueError("AnnData starting signature must have exactly 1 observation (row)")
+            # Convert to Series
+            self.starting_signature = pd.Series(
+                starting_signature.X.flatten(),
+                index=starting_signature.var_names,
+                name='starting_signature'
+            )
+        elif isinstance(starting_signature, pd.Series):
+            self.starting_signature = starting_signature.copy()
+        else:
+            raise ValueError("starting_signature must be AnnData or pd.Series")
+        
+        # Initialize other attributes
+        self.expr = None
+        self.readouts = None
+        self.learned_signatures = None
+        self.refined_signatures = None
+        
+        # Keep track of column names
+        self._compound_id_obs_col = None
+        self._sample_id_obs_cols = None
+        self._signature_id_obs_cols = None
+
+    def load_counts_data(self, adata: AnnData, compound_id_obs_col: str, layer: Optional[str] = None, 
+                        sample_id_obs_cols: Optional[List[str]] = None,
+                        signature_id_obs_cols: Optional[List[str]] = None):
+        """
+        Load raw counts data and perform pseudobulking.
+        
+        Parameters
+        ----------
+        adata : AnnData
+            Input AnnData with raw counts
+        compound_id_obs_col : str
+            Column identifying compounds
+        layer : str, optional
+            Layer containing raw counts. If None, uses .X
+        sample_id_obs_cols : list of str, optional
+            Columns identifying samples for pseudobulking
+        signature_id_obs_cols : list of str, optional
+            Columns uniquely identifying signatures
+        """
+        # Check for counts data
+        if layer and layer in adata.layers:
+            counts_data = adata.layers[layer]
+        else:
+            counts_data = adata.X
+            
+        # Check if data looks like counts (non-negative integers)
+        if hasattr(counts_data, 'data'):  # sparse matrix
+            sample_values = counts_data.data[:1000]  # Check first 1000 values
+        else:
+            sample_values = counts_data.flatten()[:1000]
+            
+        if not np.all(sample_values >= 0):
+            warnings.warn("Data contains negative values - may not be raw counts!")
+        elif not np.allclose(sample_values, sample_values.astype(int)):
+            warnings.warn("Data contains non-integer values - may not be raw counts!")
+        
+        # Set up pseudobulking columns
+        if sample_id_obs_cols is None:
+            sample_id_obs_cols = []
+        if signature_id_obs_cols is None:
+            signature_id_obs_cols = []
+            
+        # Step 1: Pseudobulk by compound + sample_id columns (sum for counts)
+        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols
+        step1_adata = pseudobulk_adata(
+            adata, 
+            sample_id_obs_cols=sample_pseudobulk_cols,
+            layer=layer,
+            method='sum'
+        )
+        
+        # Step 2: If signature_id columns exist, take mean over them per compound
+        if signature_id_obs_cols:
+            # Combine compound with signature columns for final pseudobulking
+            final_pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
+            final_adata = pseudobulk_adata(
+                step1_adata,
+                sample_id_obs_cols=final_pseudobulk_cols,
+                method='mean'
+            )
+        else:
+            final_adata = step1_adata
+        
+        # Store pseudobulked counts in layers
+        if not hasattr(final_adata, 'layers'):
+            final_adata.layers = {}
+        final_adata.layers['pseudobulked_counts'] = final_adata.X.copy()
+        
+        # Convert to log(TPM) for .X
+        # TPM = (counts / total_counts_per_sample) * 1e6
+        # log(TPM) = log((counts / total_counts_per_sample) * 1e6)
+        import scipy.sparse as sp
+        
+        if sp.issparse(final_adata.X):
+            counts_per_sample = np.array(final_adata.X.sum(axis=1)).flatten()
+            # Avoid division by zero
+            counts_per_sample[counts_per_sample == 0] = 1
+            
+            # Convert to TPM
+            tpm_data = final_adata.X.copy().astype(float)
+            tpm_data = tpm_data.multiply(1e6 / counts_per_sample[:, np.newaxis])
+            
+            # Log transform (add pseudocount to avoid log(0))
+            tpm_data.data = np.log2(tpm_data.data + 1)
+            final_adata.X = tpm_data
+        else:
+            counts_per_sample = final_adata.X.sum(axis=1)
+            counts_per_sample[counts_per_sample == 0] = 1
+            
+            # Convert to TPM
+            tpm_data = (final_adata.X / counts_per_sample[:, np.newaxis]) * 1e6
+            
+            # Log transform
+            final_adata.X = np.log2(tpm_data + 1)
+        
+        # Store results
+        self.expr = final_adata
+        self._compound_id_obs_col = compound_id_obs_col
+        self._sample_id_obs_cols = sample_id_obs_cols if sample_id_obs_cols else []
+        self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
+    
+    def load_normalized_data(self, adata: AnnData, compound_id_obs_col: str, layer: Optional[str] = None,  
+                            signature_id_obs_cols: Optional[List[str]] = None):
+        """
+        Load normalized transcriptional data.
+        
+        Parameters
+        ----------
+        adata : AnnData
+            Input AnnData with normalized expression data
+        compound_id_obs_col : str
+            Column identifying compounds
+        layer : str, optional
+            Layer containing normalized data (e.g., log(TPM)). If None, uses .X
+        signature_id_obs_cols : list of str, optional
+            Columns uniquely identifying signatures
+        """
+        # Use specified layer or .X
+        if layer and layer in adata.layers:
+            # Create temporary adata with layer as .X for pseudobulking
+            temp_adata = adata.copy()
+            temp_adata.X = temp_adata.layers[layer]
+        else:
+            temp_adata = adata.copy()
+        
+        # Set up signature ID columns
+        if signature_id_obs_cols is None:
+            signature_id_obs_cols = []
+        
+        # Pseudobulk using mean (not sum) for normalized data
+        pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
+        final_adata = pseudobulk_adata(
+            temp_adata,
+            sample_id_obs_cols=pseudobulk_cols,
+            method='mean'
+        )
+        
+        # Store results
+        self.expr = final_adata
+        self._compound_id_obs_col = compound_id_obs_col
+        self._sample_id_obs_cols = []  # Not used for normalized data
+        self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
+
+    def load_phenotypic_readouts(self, readouts: Union[pd.DataFrame, pd.Series], 
+                               readout_col: Optional[str] = None, 
+                               compound_id_col: Optional[str] = None):
+        """
+        Load phenotypic readout data.
+        
+        Parameters
+        ----------
+        readouts : pd.DataFrame or pd.Series
+            Phenotypic readout data
+        readout_col : str, optional
+            Column containing readout values (required if readouts is DataFrame)
+        compound_id_col : str, optional
+            Column containing compound IDs. If None, uses index
+            
+        Returns
+        -------
+        pd.Series
+            Series of phenotypic readouts indexed by compound ID
+        """
+        if isinstance(readouts, pd.Series):
+            readout_series = readouts.copy()
+        elif isinstance(readouts, pd.DataFrame):
+            if readout_col is None:
+                raise ValueError("readout_col must be specified when readouts is a DataFrame")
+            
+            # Extract compound IDs and readout values
+            if compound_id_col is None:
+                compound_ids = readouts.index
+            else:
+                compound_ids = readouts[compound_id_col]
+            
+            readout_series = pd.Series(readouts[readout_col].values, index=compound_ids)
+        else:
+            raise ValueError("readouts must be a pandas DataFrame or Series")
+        
+        # Drop NaN values
+        initial_size = len(readout_series)
+        readout_series = readout_series.dropna()
+        if len(readout_series) < initial_size:
+            warnings.warn(f"Dropped {initial_size - len(readout_series)} NaN values from readouts")
+        
+        # Handle duplicate compound IDs
+        if readout_series.index.duplicated().any():
+            # Check if duplicates have different values
+            duplicate_compounds = readout_series.index[readout_series.index.duplicated()].unique()
+            for compound in duplicate_compounds:
+                compound_values = readout_series.loc[compound]
+                if not np.allclose(compound_values, compound_values.iloc[0], equal_nan=True):
+                    warnings.warn(f"Compound {compound} has multiple distinct readout values - taking mean")
+            
+            # Take mean of duplicate readouts
+            readout_series = readout_series.groupby(readout_series.index).mean()
+        
+        self.readouts = readout_series
+        return readout_series
+    
+    def load_paired_readouts(self, adata: AnnData, compound_id_obs_col: str, 
+                           readouts: Union[pd.DataFrame, pd.Series],
+                           normalized_counts_layer: Optional[str] = None, 
+                           raw_counts_layer: Optional[str] = None,
+                           sample_id_obs_cols: Optional[List[str]] = None, 
+                           signature_id_obs_cols: Optional[List[str]] = None,
+                           readout_col: Optional[str] = None,
+                           compound_id_col: Optional[str] = None):
+        """
+        Load both transcriptional data and phenotypic readouts together.
+        
+        Parameters
+        ----------
+        adata : AnnData
+            Input AnnData object
+        compound_id_obs_col : str
+            Column identifying compounds in adata
+        readouts : pd.DataFrame or pd.Series
+            Phenotypic readout data
+        normalized_counts_layer : str, optional
+            Layer with normalized data (mutually exclusive with raw_counts_layer)
+        raw_counts_layer : str, optional
+            Layer with raw counts data (mutually exclusive with normalized_counts_layer)
+        sample_id_obs_cols : list of str, optional
+            Columns identifying samples (for raw counts only)
+        signature_id_obs_cols : list of str, optional
+            Columns uniquely identifying signatures
+        readout_col : str, optional
+            Column containing readout values in readouts DataFrame
+        compound_id_col : str, optional
+            Column containing compound IDs in readouts DataFrame
+        """
+        if normalized_counts_layer and raw_counts_layer:
+            raise ValueError("Cannot specify both normalized_counts_layer and raw_counts_layer")
+        
+        if not normalized_counts_layer and not raw_counts_layer:
+            raise ValueError("Must specify either normalized_counts_layer or raw_counts_layer")
+        
+        # Load transcriptional data
+        if normalized_counts_layer:
+            self.load_normalized_data(
+                adata, compound_id_obs_col, layer=normalized_counts_layer,
+                signature_id_obs_cols=signature_id_obs_cols
+            )
+        elif raw_counts_layer:
+            self.load_counts_data(
+                adata, compound_id_obs_col, layer=raw_counts_layer,
+                sample_id_obs_cols=sample_id_obs_cols,
+                signature_id_obs_cols=signature_id_obs_cols
+            )
+        
+        # Load phenotypic readouts
+        self.load_phenotypic_readouts(readouts, readout_col, compound_id_col)
+    
+    def _learned_signature(self, expr: np.ndarray, readouts: np.ndarray, 
+                          include_stats: bool = False, corr_method: str = 'pearson'):
+        """
+        Compute learned signature using correlation analysis.
+        
+        Parameters
+        ----------
+        expr : np.ndarray
+            Gene expression data (samples x genes)
+        readouts : np.ndarray
+            Phenotypic readouts for each sample
+        include_stats : bool, default=False
+            Whether to return additional statistics
+        corr_method : str, default='pearson'
+            Correlation method to use
+            
+        Returns
+        -------
+        dict or np.ndarray
+            If include_stats=True, returns dict with scores, pvals, and statistics.
+            Otherwise returns scores array.
+        """
+        if corr_method != 'pearson':
+            raise ValueError("Only 'pearson' correlation method is currently supported")
+        
+        # Compute correlations for each gene
+        pearson_results = [pearsonr(readouts, expr[:, i]) for i in range(expr.shape[1])]
+        pearson_stats = [x.statistic for x in pearson_results]
+        pearson_scores = np.array([-np.log10(x.pvalue) * np.sign(x.statistic) for x in pearson_results])
+        pearson_pvals = np.array([x.pvalue for x in pearson_results])
+        
+        # Handle NaN values
+        pearson_scores[np.isnan(pearson_scores)] = 0.
+        pearson_pvals[np.isnan(pearson_pvals)] = 1.
+        
+        if include_stats:
+            return {
+                'scores': pearson_scores, 
+                'pval': pearson_pvals,
+                'statistic': pearson_stats
+            }
+        else:
+            return pearson_scores
+    
+    def compute_learned_signatures(self, corr_method: str = 'pearson'):
+        """
+        Compute learned signatures for all signature combinations.
+        
+        Parameters
+        ----------
+        corr_method : str, default='pearson'
+            Correlation method to use
+        """
+        if self.expr is None:
+            raise ValueError("No expression data loaded. Call load_counts_data or load_normalized_data first.")
+        
+        if self.readouts is None:
+            raise ValueError("No readout data loaded. Call load_phenotypic_readouts first.")
+        
+        # Get expression data (handle sparse matrices)
+        import scipy.sparse as sp
+        if sp.issparse(self.expr.X):
+            expr_data = self.expr.X.toarray()
+        else:
+            expr_data = self.expr.X
+        
+        # Match compounds between expression and readouts
+        expr_compounds = self.expr.obs[self._compound_id_obs_col] if self._compound_id_obs_col in self.expr.obs.columns else self.expr.obs.index
+        readout_compounds = self.readouts.index
+        
+        # Find common compounds
+        common_compounds = pd.Index(expr_compounds).intersection(readout_compounds)
+        if len(common_compounds) == 0:
+            raise ValueError("No common compounds found between expression data and readouts")
+        
+        # Filter to common compounds
+        expr_mask = expr_compounds.isin(common_compounds)
+        readout_mask = readout_compounds.isin(common_compounds)
+        
+        filtered_expr = expr_data[expr_mask]
+        filtered_readouts = self.readouts[readout_mask].values
+        
+        # If we have signature ID columns, compute signatures for each combination
+        if self._signature_id_obs_cols:
+            signature_combos = self.expr.obs[expr_mask].groupby(self._signature_id_obs_cols)
+            learned_sigs = {}
+            
+            for name, group in signature_combos:
+                group_indices = group.index
+                group_expr = expr_data[group_indices]
+                
+                # Match readouts to this group
+                group_compounds = expr_compounds[group_indices]
+                group_readouts = []
+                for compound in group_compounds:
+                    if compound in readout_compounds:
+                        group_readouts.append(self.readouts.loc[compound])
+                
+                if len(group_readouts) > 0:
+                    group_readouts = np.array(group_readouts)
+                    signature_scores = self._learned_signature(group_expr, group_readouts, corr_method=corr_method)
+                    learned_sigs[name] = pd.Series(signature_scores, index=self.expr.var_names)
+            
+            self.learned_signatures = learned_sigs
+        else:
+            # Single signature for all data
+            signature_scores = self._learned_signature(filtered_expr, filtered_readouts, corr_method=corr_method)
+            self.learned_signatures = pd.Series(signature_scores, index=self.expr.var_names)
+    
+    def compute_refined_signatures(self, learning_rate: float = 0.5):
+        """
+        Compute refined signatures by combining starting and learned signatures.
+        
+        Parameters
+        ----------
+        learning_rate : float, default=0.5
+            Weight for learned signatures (0=only starting, 1=only learned)
+        """
+        if self.learned_signatures is None:
+            raise ValueError("No learned signatures available. Call compute_learned_signatures first.")
+        
+        if isinstance(self.learned_signatures, dict):
+            # Multiple signatures
+            refined_sigs = {}
+            for name, learned_sig in self.learned_signatures.items():
+                # Find common genes
+                common_genes = self.starting_signature.index.intersection(learned_sig.index)
+                if len(common_genes) == 0:
+                    warnings.warn(f"No common genes between starting and learned signature {name}")
+                    continue
+                
+                if len(common_genes) < len(self.starting_signature.index):
+                    warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signature {name}")
+                
+                # Compute refined signature
+                starting_subset = self.starting_signature.loc[common_genes]
+                learned_subset = learned_sig.loc[common_genes]
+                
+                refined_sig = (1 - learning_rate) * starting_subset + learning_rate * learned_subset
+                refined_sigs[name] = refined_sig
+            
+            self.refined_signatures = refined_sigs
+        else:
+            # Single signature
+            common_genes = self.starting_signature.index.intersection(self.learned_signatures.index)
+            if len(common_genes) == 0:
+                raise ValueError("No common genes between starting and learned signatures")
+            
+            if len(common_genes) < len(self.starting_signature.index):
+                warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signatures")
+            
+            # Compute refined signature
+            starting_subset = self.starting_signature.loc[common_genes]
+            learned_subset = self.learned_signatures.loc[common_genes]
+            
+            self.refined_signatures = (1 - learning_rate) * starting_subset + learning_rate * learned_subset

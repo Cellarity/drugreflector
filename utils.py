@@ -150,3 +150,179 @@ def create_synthetic_gene_expression(n_obs: int, n_vars: int,
     )
     
     return adata
+
+
+def pseudobulk_adata(
+    adata,
+    sample_id_obs_cols,
+    sample_metadata_obs_cols='auto',
+    layer=None,
+    method='sum',
+):
+    """
+    'Pseudobulks' an AnnData object by computing mean or total expression across each sample.
+    Samples are identified by unique combinations of values in .obs columns specified
+    by sample_id_obs_cols. The values in the .obs columns in sample_metadata_obs_cols for
+    each sample are copied over into the AnnData object returned by this function.
+    
+    Parameters
+    ----------
+    adata : AnnData
+        Input AnnData object
+    sample_id_obs_cols : list of str
+        Columns in adata.obs whose combination of values uniquely identifies samples.
+    sample_metadata_obs_cols : str or list of str, default='auto'
+        If a list is passed, it will be interpreted as the columns that are unique to each
+        sample and that will be copied over into `.obs` of the pseudobulked AnnData. If 'auto'
+        is passed, all the columns that have one-to-one mapping with each combination of values
+        in `sample_id_obs_cols` will be copied over.
+    layer : str, optional
+        Layer to use for pseudobulking. If None, uses .X
+    method : str, default='sum'
+        Whether to compute total ('sum') or average ('mean') expression when pseudobulking.
+        
+    Returns
+    -------
+    AnnData
+        Pseudobulked AnnData object with sparse layers support
+    """
+    import scipy.sparse as sp
+    
+    # Make a copy to avoid modifying original
+    adata_temp = adata.copy()
+    
+    # Use specified layer or X
+    if layer:
+        if layer not in adata_temp.layers:
+            raise ValueError(f"Layer '{layer}' not found in AnnData object")
+        X_data = adata_temp.layers[layer]
+    else:
+        X_data = adata_temp.X
+    
+    # Handle sparse matrices
+    is_sparse = sp.issparse(X_data)
+    if is_sparse:
+        X_data = X_data.tocsr()
+    
+    # Create temporary index for grouping
+    adata_obs_cols = set(adata_temp.obs.columns)
+    adata_obs_cols -= set(sample_id_obs_cols)
+    
+    adata_temp.obs['_TempIndex'] = adata_temp.obs.apply(
+        lambda row: '_'.join([f'{row[id_col]}' for id_col in sample_id_obs_cols]), axis='columns'
+    )
+    
+    # Get unique group indices
+    group_names = adata_temp.obs['_TempIndex'].unique()
+    n_groups = len(group_names)
+    n_genes = adata_temp.n_vars
+    
+    # Initialize result matrix
+    if is_sparse:
+        bulk_X = sp.lil_matrix((n_groups, n_genes), dtype=X_data.dtype)
+    else:
+        bulk_X = np.zeros((n_groups, n_genes), dtype=X_data.dtype)
+    
+    # Perform groupby operation
+    for i, group_name in enumerate(group_names):
+        group_mask = adata_temp.obs['_TempIndex'] == group_name
+        group_data = X_data[group_mask]
+        
+        if method == 'sum':
+            if is_sparse:
+                bulk_X[i, :] = group_data.sum(axis=0)
+            else:
+                bulk_X[i, :] = group_data.sum(axis=0)
+        elif method == 'mean':
+            if is_sparse:
+                bulk_X[i, :] = group_data.mean(axis=0)
+            else:
+                bulk_X[i, :] = group_data.mean(axis=0)
+        else:
+            raise ValueError("method parameter must be 'sum' or 'mean'")
+    
+    # Convert back to appropriate sparse format
+    if is_sparse:
+        bulk_X = bulk_X.tocsr()
+    
+    # Create new AnnData object
+    bulk_adata = AnnData(
+        X=bulk_X,
+        var=adata_temp.var.copy(),
+        dtype=X_data.dtype,
+    )
+    
+    # Set observation names
+    bulk_adata.obs.index = group_names
+    
+    # Handle metadata columns
+    if sample_metadata_obs_cols == 'auto':
+        sample_metadata_obs_cols = []
+        for obs_col in adata_obs_cols:
+            if adata_temp.obs.groupby('_TempIndex')[obs_col].nunique().max() == 1:
+                sample_metadata_obs_cols.append(obs_col)
+    
+    # Create metadata mapping
+    if sample_metadata_obs_cols or sample_id_obs_cols:
+        try:
+            cols_to_use = ['_TempIndex'] + list(sample_id_obs_cols)
+            if sample_metadata_obs_cols:
+                cols_to_use.extend(sample_metadata_obs_cols)
+            
+            metadata_mapping = (
+                adata_temp.obs[cols_to_use]
+                .drop_duplicates()
+                .set_index('_TempIndex', verify_integrity=True)
+            )
+        except ValueError as e:
+            raise ValueError(
+                'The combination of values in sample_metadata_cols of adata.obs must be '
+                'unique for each value in sample_id_col.'
+            ) from e
+        
+        # Merge metadata
+        bulk_adata.obs = bulk_adata.obs.merge(
+            metadata_mapping,
+            left_index=True,
+            right_index=True,
+            how='left',
+        )
+    
+    # Copy layers if they exist
+    if hasattr(adata_temp, 'layers') and adata_temp.layers:
+        for layer_name, layer_data in adata_temp.layers.items():
+            if layer_name == layer:
+                continue  # Skip the layer we used for X
+                
+            # Pseudobulk each layer
+            is_layer_sparse = sp.issparse(layer_data)
+            if is_layer_sparse:
+                layer_data = layer_data.tocsr()
+            
+            if is_layer_sparse:
+                layer_bulk = sp.lil_matrix((n_groups, n_genes), dtype=layer_data.dtype)
+            else:
+                layer_bulk = np.zeros((n_groups, n_genes), dtype=layer_data.dtype)
+            
+            for i, group_name in enumerate(group_names):
+                group_mask = adata_temp.obs['_TempIndex'] == group_name
+                group_layer_data = layer_data[group_mask]
+                
+                if method == 'sum':
+                    if is_layer_sparse:
+                        layer_bulk[i, :] = group_layer_data.sum(axis=0)
+                    else:
+                        layer_bulk[i, :] = group_layer_data.sum(axis=0)
+                elif method == 'mean':
+                    if is_layer_sparse:
+                        layer_bulk[i, :] = group_layer_data.mean(axis=0)
+                    else:
+                        layer_bulk[i, :] = group_layer_data.mean(axis=0)
+            
+            if is_layer_sparse:
+                layer_bulk = layer_bulk.tocsr()
+            
+            bulk_adata.layers[layer_name] = layer_bulk
+    
+    return bulk_adata
+    
