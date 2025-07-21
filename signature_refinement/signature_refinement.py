@@ -80,6 +80,8 @@ class SignatureRefinement:
         signature_id_obs_cols : list of str, optional
             Columns uniquely identifying signatures
         """
+        import scanpy as sc
+        
         # Check for counts data
         if layer and layer in adata.layers:
             counts_data = adata.layers[layer]
@@ -105,7 +107,7 @@ class SignatureRefinement:
             
         # Step 1: Pseudobulk by compound + sample_id columns (sum for counts)
         sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols + signature_id_obs_cols
-        pb_data = pseudobulk_adata(
+        pb_adata = pseudobulk_adata(
             adata, 
             sample_id_obs_cols=sample_pseudobulk_cols,
             layer=layer,
@@ -414,8 +416,8 @@ class SignatureRefinement:
         else:
             # Single signature for all data
             signature_readouts = self.readouts[filtered_expr.obs[self._compound_id_obs_col].values]
-            learned_sig = pd.DataFrame(self._learned_signature(filtered_expr.X, signature_readouts, corr_method=corr_method,
-                                                      include_stats=True))
+            learned_sig = pd.DataFrame(self._learned_signature(filtered_expr.X, signature_readouts, corr_method=corr_method,include_stats=True),
+                                      index=filtered_expr.var_names)
             
             sigdata = AnnData(learned_sig['scores'].values.reshape(1,-1), var = pd.DataFrame(index=learned_sig.index))
             
