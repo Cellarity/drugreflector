@@ -1,7 +1,7 @@
 """
 DrugReflector V3.5 implementation for deep virtual screening.
 
-This module provides the DrugReflectorV35 class for compound ranking
+This module provides the DrugReflector class for compound ranking
 predictions from gene expression signatures.
 """
 
@@ -18,7 +18,7 @@ from .ensemble_model import EnsembleModel
 from .utils import compute_vscores, clip_rescale_rows
 
 
-class DrugReflectorV35:
+class DrugReflector:
     """
     DrugReflector V3.5 ensemble model for compound ranking predictions.
     
