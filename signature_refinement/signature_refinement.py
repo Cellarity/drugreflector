@@ -382,51 +382,52 @@ class SignatureRefinement:
         if self.readouts is None:
             raise ValueError("No readout data loaded. Call load_phenotypic_readouts first.")
         
-        # Get expression data (handle sparse matrices)
-        import scipy.sparse as sp
-        if sp.issparse(self.expr.X):
-            expr_data = self.expr.X.toarray()
-        else:
-            expr_data = self.expr.X
+        # # Get expression data (handle sparse matrices)
+        # import scipy.sparse as sp
+        # if sp.issparse(self.expr.X):
+        #     expr_data = self.expr.X.toarray()
+        # else:
+        #     expr_data = self.expr.X
         
+
         # Match compounds between expression and readouts
         expr_compounds = self.expr.obs[self._compound_id_obs_col] if self._compound_id_obs_col in self.expr.obs.columns else self.expr.obs.index
         readout_compounds = self.readouts.index
         
         # Find common compounds
         common_compounds = pd.Index(expr_compounds).intersection(readout_compounds)
-        if len(common_compounds) == 0:
-            raise ValueError("No common compounds found between expression data and readouts")
-        
+
+        if len(common_compounds) < 2:
+            raise ValueError("Not enough common compounds found between expression data and readouts")
+
         # Filter to common compounds
         expr_mask = expr_compounds.isin(common_compounds)
         readout_mask = readout_compounds.isin(common_compounds)
         
-        filtered_expr = expr_data[expr_mask]
+        filtered_expr = self.expr[expr_mask,:].copy()
         filtered_readouts = self.readouts[readout_mask].values
         
         # If we have signature ID columns, compute signatures for each combination
         if self._signature_id_obs_cols:
-            signature_combos = self.expr.obs[expr_mask].groupby(self._signature_id_obs_cols)
+            expr_groups = filtered_expr.obs.groupby(self._signature_id_obs_cols).groups
+
             learned_sigs = {}
             
-            for name, group in signature_combos:
-                group_indices = group.index
-                group_expr = expr_data[group_indices]
+            for signame, group in expr_groups:
+                group_expr = filtered_expr[group,:].copy()
                 
-                # Match readouts to this group
-                group_compounds = expr_compounds[group_indices]
-                group_readouts = []
-                for compound in group_compounds:
-                    if compound in readout_compounds:
-                        group_readouts.append(self.readouts.loc[compound])
-                
-                if len(group_readouts) > 0:
-                    group_readouts = np.array(group_readouts)
-                    signature_scores = self._learned_signature(group_expr, group_readouts, corr_method=corr_method)
-                    learned_sigs[name] = pd.Series(signature_scores, index=self.expr.var_names)
+                if group_expr.shape[0] < 2:
+                    warnings.warn('Not enough samples with readout in group {}; skipping'.format(signame))
+                    continue
+
+
+                group_readouts = self.readout[group_expr.obs[self._compound_id_obs_col].values]
+
+                signature_scores = self._learned_signature(group_expr,group_readouts, corr_method=corr_method)
+                learned_sigs[signame] = pd.Series(signature_scores, index=self.expr.var_names)
             
-            self.learned_signatures = learned_sigs
+
+            self.learned_signatures = AnnData(pd.DataFrame(learned_sigs).transpose())
         else:
             # Single signature for all data
             signature_scores = self._learned_signature(filtered_expr, filtered_readouts, corr_method=corr_method)
