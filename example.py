@@ -7,7 +7,7 @@ predictions from gene expression data.
 """
 
 import numpy as np
-from drug_reflector import DrugReflectorV35
+from drugreflector import DrugReflector
 from utils import create_synthetic_gene_expression
 
 
@@ -39,7 +39,7 @@ def main():
     print("\nExample code structure:")
     print("""
 # Initialize DrugReflector with trained models
-model = DrugReflectorV35(checkpoint_paths=model_paths)
+model = DrugReflector(checkpoint_paths=model_paths)
 
 # Make predictions
 predictions = model.predict_ranks_on_adata(adata, n_top=50)
@@ -55,7 +55,7 @@ predictions_with_pvals = model.predict_ranks_on_adata(
     """)
     
     print("\nCommand-line usage:")
-    print("python predict.py input.h5ad --model1 models/model1.pt --model2 models/model2.pt --model3 models/model3.pt")
+    print("python drugreflector/predict.py input.h5ad --model1 models/model1.pt --model2 models/model2.pt --model3 models/model3.pt")
 
 
 if __name__ == "__main__":
