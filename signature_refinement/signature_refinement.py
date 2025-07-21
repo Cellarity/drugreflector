@@ -430,10 +430,16 @@ class SignatureRefinement:
         """
         Compute refined signatures by combining starting and learned signatures.
         
+        The refined signatures will have the same gene set as the initial signature.
+        For genes not in the learned signature, they are left unchanged from the starting signature.
+        For genes in the learned signature, interpolation is performed.
+        
         Parameters
         ----------
         learning_rate : float, default=0.5
             Weight for learned signatures (0=only starting, 1=only learned)
+        scale_learned_sig : bool, default=True
+            Whether to scale learned signatures to have same std as starting signature
         """
         if self.learned_signatures is None:
             raise ValueError("No learned signatures available. Call compute_learned_signatures first.")
@@ -446,26 +452,65 @@ class SignatureRefinement:
         if len(common_genes) < len(self.starting_signature.index):
             warnings.warn(f"Only {len(common_genes)}/{len(self.starting_signature.index)} genes shared between starting and learned signatures")
         
-        # Get starting signature subset for common genes
-        starting_subset = self.starting_signature.loc[common_genes]
+        # Create refined signatures AnnData with same gene set as starting signature
+        n_signatures = self.learned_signatures.n_obs
+        n_starting_genes = len(self.starting_signature)
         
-        # Create refined signatures AnnData with same structure as learned signatures
-        refined_adata = self.learned_signatures.copy()
+        # Initialize refined signatures with starting signature values for all genes
+        refined_scores = np.tile(self.starting_signature.values, (n_signatures, 1))
         
-        # Subset to common genes
-        gene_mask = refined_adata.var_names.isin(common_genes)
-        refined_adata = refined_adata[:, gene_mask].copy()
+        # Create AnnData with full starting signature gene set
+        refined_adata = AnnData(
+            X=refined_scores,
+            obs=self.learned_signatures.obs.copy(),
+            var=pd.DataFrame(index=self.starting_signature.index)
+        )
         
-        # Get learned scores (main signature values) from .X
-        learned_scores = refined_adata.X  # Shape: (n_signatures, n_common_genes)
+        # Copy layers structure from learned signatures (but expand to full gene set)
+        if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
+            for layer_name, layer_data in self.learned_signatures.layers.items():
+                # Initialize layer with zeros for all genes
+                full_layer = np.zeros((n_signatures, n_starting_genes))
+                refined_adata.layers[layer_name] = full_layer
         
-        # Compute refined signatures: (1-lr) * starting + lr * learned
-        refined_scores = np.zeros_like(learned_scores)
-        for i in range(learned_scores.shape[0]):
-            refined_scores[i, :] = (1 - learning_rate) * starting_subset.values + learning_rate * learned_scores[i, :]
-        
-        # Update .X with refined scores
-        refined_adata.X = refined_scores
+        # Now perform interpolation only for common genes
+        if len(common_genes) > 0:
+            # Get indices of common genes in starting signature
+            starting_gene_indices = [self.starting_signature.index.get_loc(gene) for gene in common_genes]
+            
+            # Get learned scores for common genes only
+            learned_subset = self.learned_signatures[:, self.learned_signatures.var_names.isin(common_genes)]
+            learned_scores_common = learned_subset.X  # Shape: (n_signatures, n_common_genes)
+            
+            # Get starting signature values for common genes
+            starting_subset = self.starting_signature.loc[common_genes]
+            
+            # Scale learned signatures if requested
+            if scale_learned_sig:
+                starting_sig_std = starting_subset.std()
+                learned_scores_std = np.std(learned_scores_common, axis=1).reshape(-1, 1)
+                # Where learned signature has zero std, set learned scores to zero (no contribution)
+                zero_std_mask = learned_scores_std.flatten() == 0
+                learned_scores_common[zero_std_mask, :] = 0
+                # Scale non-zero std signatures
+                nonzero_std_mask = ~zero_std_mask
+                if np.any(nonzero_std_mask):
+                    learned_scores_common[nonzero_std_mask, :] = starting_sig_std * (
+                        learned_scores_common[nonzero_std_mask, :] / learned_scores_std[nonzero_std_mask]
+                    )
+            
+            # Perform interpolation for common genes only
+            for i in range(n_signatures):
+                refined_adata.X[i, starting_gene_indices] = (
+                    (1 - learning_rate) * starting_subset.values + 
+                    learning_rate * learned_scores_common[i, :]
+                )
+            
+            # Update layers for common genes
+            if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
+                for layer_name, layer_data in learned_subset.layers.items():
+                    for i in range(n_signatures):
+                        refined_adata.layers[layer_name][i, starting_gene_indices] = layer_data[i, :]
         
         # Store the refined signatures
         self.refined_signatures = refined_adata
