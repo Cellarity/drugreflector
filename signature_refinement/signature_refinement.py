@@ -11,6 +11,7 @@ import warnings
 from typing import Optional, Union, List
 from anndata import AnnData
 from scipy.stats import pearsonr
+import scipy.sparse as sp
 import sys
 import os
 
@@ -103,60 +104,29 @@ class SignatureRefinement:
             signature_id_obs_cols = []
             
         # Step 1: Pseudobulk by compound + sample_id columns (sum for counts)
-        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols
-        step1_adata = pseudobulk_adata(
+        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols + signature_id_obs_cols
+        pb_data = pseudobulk_adata(
             adata, 
             sample_id_obs_cols=sample_pseudobulk_cols,
             layer=layer,
             method='sum'
         )
         
-        # Step 2: If signature_id columns exist, take mean over them per compound
-        if signature_id_obs_cols:
-            # Combine compound with signature columns for final pseudobulking
-            final_pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
-            final_adata = pseudobulk_adata(
-                step1_adata,
-                sample_id_obs_cols=final_pseudobulk_cols,
-                method='mean'
-            )
-        else:
-            final_adata = step1_adata
-        
         # Store pseudobulked counts in layers
-        if not hasattr(final_adata, 'layers'):
-            final_adata.layers = {}
-        final_adata.layers['pseudobulked_counts'] = final_adata.X.copy()
+        if not hasattr(pb_adata, 'layers'):
+            pb_adata.layers = {}
+        pb_adata.layers['pseudobulked_counts'] = pb_adata.X.copy()
         
         # Convert to log(TPM) for .X
         # TPM = (counts / total_counts_per_sample) * 1e6
-        # log(TPM) = log((counts / total_counts_per_sample) * 1e6)
-        import scipy.sparse as sp
+        # log(TPM) = log(1 + (counts / total_counts_per_sample) * 1e6)
+
+        sc.pp.normalize_total(pb_adata, target_sum=1e6)
+        sc.pp.log1p(pb_adata)
         
-        if sp.issparse(final_adata.X):
-            counts_per_sample = np.array(final_adata.X.sum(axis=1)).flatten()
-            # Avoid division by zero
-            counts_per_sample[counts_per_sample == 0] = 1
-            
-            # Convert to TPM
-            tpm_data = final_adata.X.copy().astype(float)
-            tpm_data = tpm_data.multiply(1e6 / counts_per_sample[:, np.newaxis])
-            
-            # Log transform (add pseudocount to avoid log(0))
-            tpm_data.data = np.log2(tpm_data.data + 1)
-            final_adata.X = tpm_data
-        else:
-            counts_per_sample = final_adata.X.sum(axis=1)
-            counts_per_sample[counts_per_sample == 0] = 1
-            
-            # Convert to TPM
-            tpm_data = (final_adata.X / counts_per_sample[:, np.newaxis]) * 1e6
-            
-            # Log transform
-            final_adata.X = np.log2(tpm_data + 1)
-        
+    
         # Store results
-        self.expr = final_adata
+        self.expr = pb_adata
         self._compound_id_obs_col = compound_id_obs_col
         self._sample_id_obs_cols = sample_id_obs_cols if sample_id_obs_cols else []
         self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
@@ -409,28 +379,33 @@ class SignatureRefinement:
         
         # If we have signature ID columns, compute signatures for each combination
         if self._signature_id_obs_cols:
-            expr_groups = filtered_expr.obs.groupby(self._signature_id_obs_cols).groups
-
+            expr_groups = filtered_expr.obs.groupby(self._signature_id_obs_cols, observed=True).groups
             learned_sigs = {}
             
-            for signame, group in expr_groups:
+            for signame, group in expr_groups.items():
                 group_expr = filtered_expr[group,:].copy()
+                if sp.issparse(group_expr.X):
+                    group_expr.X = group_expr.X.toarray()
                 
                 if group_expr.shape[0] < 2:
                     warnings.warn('Not enough samples with readout in group {}; skipping'.format(signame))
                     continue
 
+                
+                group_readouts = self.readouts[group_expr.obs[self._compound_id_obs_col].values]
 
-                group_readouts = self.readout[group_expr.obs[self._compound_id_obs_col].values]
-
-                signature_scores = self._learned_signature(group_expr,group_readouts, corr_method=corr_method)
+                signature_scores = self._learned_signature(group_expr.X,group_readouts, corr_method=corr_method)
                 learned_sigs[signame] = pd.Series(signature_scores, index=self.expr.var_names)
-            
 
-            self.learned_signatures = AnnData(pd.DataFrame(learned_sigs).transpose())
+            learned_sig_df = pd.DataFrame(learned_sigs).transpose()
+            obs = learned_sig_df.index.to_frame(name=self._signature_id_obs_cols, index=False)
+            self.learned_signatures = AnnData(learned_sig_df.values, obs=obs,
+                                              var = pd.DataFrame(index=learned_sig_df.columns))
+                                              
         else:
             # Single signature for all data
-            signature_scores = self._learned_signature(filtered_expr, filtered_readouts, corr_method=corr_method)
+            signature_readouts = filtered_readouts.loc[filtered_expr.obs[self._compound_id_obs_col].values]
+            signature_scores = self._learned_signature(filtered_expr.X, signature_readouts, corr_method=corr_method)
             self.learned_signatures = pd.Series(signature_scores, index=self.expr.var_names)
     
     def compute_refined_signatures(self, learning_rate: float = 0.5):
