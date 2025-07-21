@@ -198,27 +198,15 @@ class SignatureRefinement:
             signature_id_obs_cols = []
             
         # Step 1: Pseudobulk by compound + sample_id columns (mean for normalized data)
-        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols
-        step1_adata = pseudobulk_adata(
+        sample_pseudobulk_cols = [compound_id_obs_col] + sample_id_obs_cols + signature_id_obs_cols
+        pb_adata = pseudobulk_adata(
             temp_adata,
             sample_id_obs_cols=sample_pseudobulk_cols,
             method='mean'
         )
         
-        # Step 2: If signature_id columns exist, take mean over them per compound
-        if signature_id_obs_cols:
-            # Combine compound with signature columns for final pseudobulking
-            final_pseudobulk_cols = [compound_id_obs_col] + signature_id_obs_cols
-            final_adata = pseudobulk_adata(
-                step1_adata,
-                sample_id_obs_cols=final_pseudobulk_cols,
-                method='mean'
-            )
-        else:
-            final_adata = step1_adata
-        
         # Store results
-        self.expr = final_adata
+        self.expr = pb_adata
         self._compound_id_obs_col = compound_id_obs_col
         self._sample_id_obs_cols = sample_id_obs_cols if sample_id_obs_cols else []
         self._signature_id_obs_cols = signature_id_obs_cols if signature_id_obs_cols else []
