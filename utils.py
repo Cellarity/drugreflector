@@ -50,25 +50,49 @@ def compute_vscores(adata, transitions=None, mute=False):
     adata : AnnData
         Gene expression data
     transitions : dict, optional
-        Transition specifications for v-score computation (not yet implemented)
+        Transition specifications for v-score computation. Should be a dict with
+        'group_col', 'group0_value', 'group1_value' keys for computing v-scores
+        between two populations.
     mute : bool, default=False
         Whether to suppress warnings
         
     Returns
     -------
     AnnData
-        Processed v-scores
+        AnnData object with v-scores as .X if transitions specified,
+        otherwise returns copy of input with warning
     """
     if transitions is not None:
-        raise ValueError('cannnot do transitions yet')
-        # TODO: implement v-score computation for transitions
+        # Extract transition parameters
+        if not isinstance(transitions, dict):
+            raise ValueError('transitions must be a dict with group_col, group0_value, group1_value keys')
+        
+        required_keys = ['group_col', 'group0_value', 'group1_value']
+        for key in required_keys:
+            if key not in transitions:
+                raise ValueError(f'transitions dict must contain key: {key}')
+        
+        group_col = transitions['group_col']
+        group0_value = transitions['group0_value']
+        group1_value = transitions['group1_value']
+        layer = transitions.get('layer', None)
+        
+        # Compute v-scores between the two groups
+        vscores_series = compute_vscores_adata(adata, group_col, group0_value, group1_value, layer=layer)
+        
+        # Create new AnnData with v-scores
+        vscores = AnnData(
+            X=vscores_series.values.reshape(1, -1),
+            var=pd.DataFrame(index=vscores_series.index),
+            obs=pd.DataFrame(index=[f'{group1_value}_vs_{group0_value}'])
+        )
+        
+        return vscores
     else:
         if not mute:
             warnings.warn('Assuming passed representation is v-score.', stacklevel=1)
         vscores = adata.copy()
-
-    
-    return vscores
+        return vscores
 
 
 def load_h5ad_file(filepath: str) -> AnnData:
@@ -325,4 +349,106 @@ def pseudobulk_adata(
             bulk_adata.layers[layer_name] = layer_bulk
     
     return bulk_adata
+
+
+def compute_vscore_two_groups(group0, group1):
+    """
+    Compute v-score between two groups of numbers.
     
+    V-score is defined as (mean1 - mean0) / (sqrt(var0 + var1) + (var0 + var1 == 0))
+    This is the difference in means normalized by the sum of standard deviations.
+    
+    Parameters
+    ----------
+    group0 : array-like
+        First group of values
+    group1 : array-like
+        Second group of values
+        
+    Returns
+    -------
+    float
+        V-score between the two groups
+    """
+    group0 = np.asarray(group0)
+    group1 = np.asarray(group1)
+    
+    mean0 = np.mean(group0)
+    mean1 = np.mean(group1)
+    var0 = np.var(group0, ddof=0)
+    var1 = np.var(group1, ddof=0)
+    
+    # V-score formula from cifra
+    denominator = np.sqrt(var0 + var1) + (var0 + var1 == 0)
+    vscore = (mean1 - mean0) / denominator
+    
+    return vscore
+
+
+def compute_vscores_adata(adata, group_col, group0_value, group1_value, layer=None):
+    """
+    Compute v-scores between two populations in an AnnData object.
+    
+    Parameters
+    ----------
+    adata : AnnData
+        Input AnnData object
+    group_col : str
+        Column in adata.obs that identifies the groups
+    group0_value : str or numeric
+        Value in group_col that identifies the first group (control/reference)
+    group1_value : str or numeric
+        Value in group_col that identifies the second group (treatment/comparison)
+    layer : str, optional
+        Layer to use for computation. If None, uses .X
+        
+    Returns
+    -------
+    pd.Series
+        V-scores for each gene, indexed by gene names
+    """
+    import scipy.sparse as sp
+    
+    # Check that group column exists
+    if group_col not in adata.obs.columns:
+        raise ValueError(f"Column '{group_col}' not found in adata.obs")
+    
+    # Get masks for each group
+    group0_mask = adata.obs[group_col] == group0_value
+    group1_mask = adata.obs[group_col] == group1_value
+    
+    # Check that both groups exist
+    if not group0_mask.any():
+        raise ValueError(f"No samples found with {group_col}='{group0_value}'")
+    if not group1_mask.any():
+        raise ValueError(f"No samples found with {group_col}='{group1_value}'")
+    
+    # Get expression data
+    if layer and layer in adata.layers:
+        X_data = adata.layers[layer]
+    else:
+        X_data = adata.X
+    
+    # Handle sparse matrices
+    if sp.issparse(X_data):
+        X_data = X_data.toarray()
+    
+    # Extract data for each group
+    group0_data = X_data[group0_mask, :]  # Shape: (n_samples_group0, n_genes)
+    group1_data = X_data[group1_mask, :]  # Shape: (n_samples_group1, n_genes)
+    
+    # Vectorized v-score computation across all genes
+    mean0 = np.mean(group0_data, axis=0)  # Shape: (n_genes,)
+    mean1 = np.mean(group1_data, axis=0)  # Shape: (n_genes,)
+    var0 = np.var(group0_data, axis=0, ddof=0)  # Shape: (n_genes,)
+    var1 = np.var(group1_data, axis=0, ddof=0)  # Shape: (n_genes,)
+    
+    # V-score formula from cifra (vectorized)
+    denominator = np.sqrt(var0 + var1) + (var0 + var1 == 0)
+    vscores = (mean1 - mean0) / denominator
+    
+    # Return as pandas Series with gene names as index
+    return pd.Series(vscores, index=adata.var_names, name='vscore')
+
+
+

@@ -6,7 +6,14 @@ using ensemble neural network models.
 """
 
 from .drugreflector import DrugReflector, EnsembleModel, nnFC
-from .utils import load_h5ad_file, create_synthetic_gene_expression
+from .utils import (
+    load_h5ad_file, 
+    create_synthetic_gene_expression,
+    compute_vscores,
+    compute_vscore_two_groups,
+    compute_vscores_adata,
+    pseudobulk_adata
+)
 
 __version__ = "1.0.0"
 __all__ = [
@@ -14,5 +21,9 @@ __all__ = [
     "EnsembleModel", 
     "nnFC",
     "load_h5ad_file",
-    "create_synthetic_gene_expression"
+    "create_synthetic_gene_expression",
+    "compute_vscores",
+    "compute_vscore_two_groups",
+    "compute_vscores_adata",
+    "pseudobulk_adata"
 ]
