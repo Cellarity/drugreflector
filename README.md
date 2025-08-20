@@ -1,4 +1,4 @@
-# Deep Virtual Screening with DrugReflector
+# DrugReflector
 
 A minimal implementation for compound ranking predictions from gene expression signatures using ensemble neural network models.
 
@@ -29,6 +29,11 @@ This package provides tools for virtual drug screening using transcriptional sig
 ```bash
 git clone <repository-url>
 cd deep-virtual-screening
+```
+
+Or install via pip:
+```bash
+pip install drugreflector
 ```
 
 2. Install dependencies:
@@ -63,7 +68,7 @@ deep-virtual-screening/
 
 ```python
 import numpy as np
-from deep_virtual_screening import DrugReflector, create_synthetic_gene_expression
+from drugreflector import DrugReflector, create_synthetic_gene_expression
 
 # Load your gene expression data (AnnData format)
 # adata = load_your_data()  # Replace with your data loading
@@ -112,7 +117,7 @@ predictions_with_pvals = model.predict_ranks_on_adata(
 Refine transcriptional signatures using paired transcriptional + phenotypic data:
 
 ```python
-from deep_virtual_screening.signature_refinement import SignatureRefinement
+from drugreflector.signature_refinement import SignatureRefinement
 import pandas as pd
 
 # Starting signature (pandas Series with gene names as index)
@@ -174,7 +179,7 @@ refiner.load_counts_data(
 Fast vectorized v-score calculations for differential expression analysis:
 
 ```python
-from deep_virtual_screening import compute_vscores_adata, compute_vscore_two_groups
+from drugreflector import compute_vscores_adata, compute_vscore_two_groups
 
 # Compute v-scores between two cell populations
 vscores = compute_vscores_adata(
@@ -202,7 +207,7 @@ vscore = compute_vscore_two_groups(group0_values, group1_values)
 ### Loading and Preprocessing
 
 ```python
-from deep_virtual_screening import load_h5ad_file, pseudobulk_adata
+from drugreflector import load_h5ad_file, pseudobulk_adata
 
 # Load H5AD file with preprocessing
 adata = load_h5ad_file('data.h5ad')
@@ -218,7 +223,7 @@ pseudobulked = pseudobulk_adata(
 ### V-score Integration with Existing Workflow
 
 ```python
-from deep_virtual_screening import compute_vscores
+from drugreflector import compute_vscores
 
 # Use v-scores in existing workflow
 transitions = {
