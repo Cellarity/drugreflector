@@ -1,0 +1,120 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drugreflector"
+version = "1.0.0"
+description = "A minimal implementation for compound ranking predictions from gene expression signatures using ensemble neural network models"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = [
+    "drug discovery",
+    "virtual screening", 
+    "gene expression",
+    "transcriptional signatures",
+    "neural networks",
+    "bioinformatics"
+]
+dependencies = [
+    "numpy>=1.19.0",
+    "pandas>=1.3.0",
+    "scipy>=1.7.0",
+    "torch>=1.9.0",
+    "anndata>=0.8.0",
+    "scanpy>=1.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "flake8",
+    "mypy",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "myst-parser",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/drugreflector"
+Repository = "https://github.com/yourusername/drugreflector"
+Documentation = "https://github.com/yourusername/drugreflector#readme"
+"Bug Reports" = "https://github.com/yourusername/drugreflector/issues"
+"Model Checkpoints" = "https://doi.org/10.5281/zenodo.16912445"
+
+[project.scripts]
+drugreflector = "drugreflector.cli:main"
+
+[tool.setuptools]
+packages = ["drugreflector", "drugreflector.signature_refinement"]
+
+[tool.setuptools.package-dir]
+drugreflector = "."
+"drugreflector.signature_refinement" = "signature_refinement"
+
+[tool.setuptools.package-data]
+drugreflector = ["*.md", "*.txt"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = [
+    "--cov=drugreflector",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--strict-markers",
+]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
