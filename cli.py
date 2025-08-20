@@ -108,7 +108,12 @@ def main():
             print(f"Computing background distribution with {args.background_samples} samples...")
             model.compute_background_distribution(n_samples=args.background_samples)
         
-        # Make predictions
+        # Note: This CLI assumes raw gene expression data, not v-scores
+        # In practice, you would compute v-scores first using drugreflector.compute_vscores_adata
+        print("Warning: CLI expects v-score data, but got gene expression data.")
+        print("In a real workflow, compute v-scores first using drugreflector.compute_vscores_adata")
+        
+        # Make predictions (assuming input is v-scores)
         print(f"Making predictions for top {args.n_top} compounds...")
         predictions = model.predict_ranks_on_adata(
             adata, 

@@ -68,7 +68,8 @@ deep-virtual-screening/
 
 ```python
 import numpy as np
-from drugreflector import DrugReflector, create_synthetic_gene_expression
+import pandas as pd
+from drugreflector import DrugReflector, compute_vscores_adata, create_synthetic_gene_expression
 
 # Load your gene expression data (AnnData format)
 # adata = load_your_data()  # Replace with your data loading
@@ -80,7 +81,19 @@ adata = create_synthetic_gene_expression(
     obs_names=['sample_A', 'sample_B', 'sample_C']
 )
 
-# Initialize DrugReflector with model checkpoints
+# Step 1: Compute v-scores from gene expression data
+# (Assumes you have control/treatment groups in your data)
+# vscores = compute_vscores_adata(adata, 'treatment', 'control', 'drug_treated')
+
+# For demo, create synthetic v-scores as pandas DataFrame
+genes = [f"GENE{i}" for i in range(978)]
+vscores_df = pd.DataFrame(
+    np.random.normal(0, 1, (3, 978)),
+    index=['sample_A', 'sample_B', 'sample_C'],
+    columns=genes
+)
+
+# Step 2: Initialize DrugReflector with model checkpoints
 model_paths = [
     'checkpoints/model_fold_0.pt',
     'checkpoints/model_fold_1.pt', 
@@ -89,11 +102,11 @@ model_paths = [
 
 model = DrugReflector(checkpoint_paths=model_paths)
 
-# Make predictions (get top 50 compounds for each sample)
-predictions = model.predict_ranks_on_adata(adata, n_top=50)
+# Step 3: Make predictions using v-scores (accepts Series, DataFrame, or AnnData)
+predictions = model.predict_ranks_on_adata(vscores_df, n_top=50)
 
 # Get top compounds
-top_compounds = model.get_top_compounds(adata, n_top=10)
+top_compounds = model.get_top_compounds(vscores_df, n_top=10)
 print("Top 10 compounds for each sample:")
 print(top_compounds)
 ```
@@ -104,12 +117,38 @@ print(top_compounds)
 # Compute background distribution for p-value calculation
 model.compute_background_distribution(n_samples=1000)
 
-# Get predictions with p-values
+# Get predictions with p-values using v-score data
 predictions_with_pvals = model.predict_ranks_on_adata(
-    adata, 
+    vscores_df, 
     compute_pvalues=True, 
     n_top=50
 )
+```
+
+### Input Formats for DrugReflector
+
+DrugReflector accepts v-score data in three formats:
+
+```python
+# 1. Pandas Series (single v-score vector)
+vscore_series = pd.Series([1.2, -0.8, 0.5, ...], index=['GENE1', 'GENE2', 'GENE3', ...])
+predictions = model.predict_ranks_on_adata(vscore_series)
+
+# 2. Pandas DataFrame (multiple transitions/signatures)
+vscores_df = pd.DataFrame({
+    'GENE1': [1.2, 0.8],
+    'GENE2': [-0.8, 1.1], 
+    'GENE3': [0.5, -0.3]
+}, index=['treatment_A', 'treatment_B'])
+predictions = model.predict_ranks_on_adata(vscores_df)
+
+# 3. AnnData (v-scores in .X)
+vscores_adata = AnnData(
+    X=vscores_df.values,
+    var=pd.DataFrame(index=vscores_df.columns),
+    obs=pd.DataFrame(index=vscores_df.index)
+)
+predictions = model.predict_ranks_on_adata(vscores_adata)
 ```
 
 ## Signature Refinement
@@ -311,6 +350,17 @@ Model checkpoints: DOI 10.5281/zenodo.16912445
 ## License
 
 [TBD]
+
+## Troubleshooting
+
+### Scikit-learn Version Warning
+
+If you see a warning about scikit-learn version mismatch:
+```
+InconsistentVersionWarning: Trying to unpickle estimator LabelEncoder from version 1.2.2 when using version 1.5.1
+```
+
+This occurs because the model checkpoints were trained with scikit-learn 1.2.2. The warning is generally harmless and does not affect functionality, but indicates a version difference between training and inference environments.
 
 ## Support
 

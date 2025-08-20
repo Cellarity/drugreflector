@@ -8,14 +8,14 @@ predictions from gene expression signatures.
 import numpy as np
 import pandas as pd
 import torch
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from anndata import AnnData
 import warnings
 import scipy.stats as stats
 from scipy.special import softmax
 
 from .ensemble_model import EnsembleModel
-from .utils import compute_vscores, clip_rescale_rows
+from .utils import clip_rescale_rows
 
 
 class DrugReflector:
@@ -58,16 +58,56 @@ class DrugReflector:
         self.compound_names = self.model.dimensions['output_names']
         self.n_compounds = len(self.compound_names)
     
-    def transform(self, adata: AnnData, transitions=None, ranks: bool = False) -> AnnData:
+    def _prepare_vscores(self, data: Union[pd.Series, pd.DataFrame, AnnData]) -> AnnData:
         """
-        Transform input data through the ensemble model.
+        Convert input data to AnnData with v-scores.
         
         Parameters
         ----------
-        adata : AnnData
-            Input gene expression data
-        transitions : optional
-            Transition specifications for v-score computation
+        data : pd.Series, pd.DataFrame, or AnnData
+            Input v-score data:
+            - Series: v-scores indexed by genes
+            - DataFrame: rows=transitions, columns=genes, values=v-scores
+            - AnnData: v-scores in .X, genes in .var, transitions in .obs
+            
+        Returns
+        -------
+        AnnData
+            V-scores formatted for model input
+        """
+        if isinstance(data, pd.Series):
+            # Single v-score vector indexed by genes
+            vscores_adata = AnnData(
+                X=data.values.reshape(1, -1),
+                var=pd.DataFrame(index=data.index),
+                obs=pd.DataFrame(index=['vscore'])
+            )
+        elif isinstance(data, pd.DataFrame):
+            # Rows = transitions, columns = genes
+            vscores_adata = AnnData(
+                X=data.values,
+                var=pd.DataFrame(index=data.columns),
+                obs=pd.DataFrame(index=data.index)
+            )
+        elif isinstance(data, AnnData):
+            # Already AnnData - assume v-scores in .X
+            vscores_adata = data.copy()
+        else:
+            raise ValueError("Input must be pandas Series, DataFrame, or AnnData")
+        
+        return vscores_adata
+
+    def transform(self, data: Union[pd.Series, pd.DataFrame, AnnData], ranks: bool = False) -> AnnData:
+        """
+        Transform v-score data through the ensemble model.
+        
+        Parameters
+        ----------
+        data : pd.Series, pd.DataFrame, or AnnData
+            Input v-score data:
+            - Series: v-scores indexed by genes
+            - DataFrame: rows=transitions, columns=genes, values=v-scores  
+            - AnnData: v-scores in .X, genes in .var, transitions in .obs
         ranks : bool, default=False
             Whether to compute ranks for predictions
             
@@ -76,8 +116,8 @@ class DrugReflector:
         AnnData
             Prediction scores with compounds as variables
         """
-        # Compute v-scores and apply preprocessing
-        vscores = compute_vscores(adata, transitions)
+        # Convert input to AnnData format
+        vscores = self._prepare_vscores(data)
 
         # Clip and rescale rows
         clip_rescale_rows(vscores.X, clip=2, target_std=1)
@@ -94,17 +134,18 @@ class DrugReflector:
         
         return scores
     
-    def predict_ranks_on_adata(self, adata: AnnData, transitions=None, compute_pvalues: bool = False, 
-                               n_top: int = None) -> pd.DataFrame:
+    def predict_ranks_on_adata(self, data: Union[pd.Series, pd.DataFrame, AnnData], 
+                               compute_pvalues: bool = False, n_top: int = None) -> pd.DataFrame:
         """
-        Predict compound ranks for input gene expression data.
+        Predict compound ranks for input v-score data.
         
         Parameters
         ----------
-        adata : AnnData
-            Input gene expression data
-        transitions : optional
-            Transition specifications for v-score computation
+        data : pd.Series, pd.DataFrame, or AnnData
+            Input v-score data:
+            - Series: v-scores indexed by genes
+            - DataFrame: rows=transitions, columns=genes, values=v-scores
+            - AnnData: v-scores in .X, genes in .var, transitions in .obs
         compute_pvalues : bool, default=False
             Whether to compute p-values using background distribution
         n_top : int, optional
@@ -116,7 +157,7 @@ class DrugReflector:
             Multi-index DataFrame with ranks, scores, probabilities, and optionally p-values
         """
         # Get predictions
-        predictions = self.transform(adata, transitions=transitions, ranks=True)
+        predictions = self.transform(data, ranks=True)
         
         # Extract ranks and scores
         ranks = predictions.layers['ranks']
@@ -126,16 +167,19 @@ class DrugReflector:
         # Prepare output data
         output_data = {}
         
+        # Get observation names from the predictions
+        obs_names = predictions.obs_names
+        
         # Add ranks
-        for i, obs_name in enumerate(adata.obs_names):
+        for i, obs_name in enumerate(obs_names):
             output_data[('rank', obs_name)] = ranks[i]
         
         # Add logits (scores)
-        for i, obs_name in enumerate(adata.obs_names):
+        for i, obs_name in enumerate(obs_names):
             output_data[('logit', obs_name)] = scores[i]
             
         # Add probabilities
-        for i, obs_name in enumerate(adata.obs_names):
+        for i, obs_name in enumerate(obs_names):
             output_data[('prob', obs_name)] = probs[i]
         
         # Add p-values if requested
@@ -144,7 +188,7 @@ class DrugReflector:
                 raise ValueError("Background distribution not computed. Call compute_background_distribution() first.")
             
             pvalues = self._compute_pvalues(scores)
-            for i, obs_name in enumerate(adata.obs_names):
+            for i, obs_name in enumerate(obs_names):
                 output_data[('pvalue', obs_name)] = pvalues[i]
         
         # Create DataFrame
@@ -154,7 +198,7 @@ class DrugReflector:
         if n_top is not None and n_top > 0:
             # Get compounds that are in top n_top for any observation
             top_compounds = set()
-            for obs_name in adata.obs_names:
+            for obs_name in obs_names:
                 top_ranks = df[('rank', obs_name)].nsmallest(n_top)
                 top_compounds.update(top_ranks.index)
             
@@ -236,15 +280,18 @@ class DrugReflector:
         
         return pvalues
     
-    def get_top_compounds(self, adata: AnnData, n_top: int = 20, 
+    def get_top_compounds(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 20, 
                          compute_pvalues: bool = False) -> Dict[str, pd.DataFrame]:
         """
         Get top-ranked compounds for each observation.
         
         Parameters
         ----------
-        adata : AnnData
-            Input gene expression data
+        data : pd.Series, pd.DataFrame, or AnnData
+            Input v-score data:
+            - Series: v-scores indexed by genes
+            - DataFrame: rows=transitions, columns=genes, values=v-scores
+            - AnnData: v-scores in .X, genes in .var, transitions in .obs
         n_top : int, default=20
             Number of top compounds to return
         compute_pvalues : bool, default=False
@@ -256,10 +303,18 @@ class DrugReflector:
             Dictionary with observation names as keys and top compounds as values
         """
         # Get full predictions
-        full_results = self.predict_ranks_on_adata(adata, compute_pvalues=compute_pvalues)
+        full_results = self.predict_ranks_on_adata(data, compute_pvalues=compute_pvalues)
+        
+        # Get observation names from the data
+        if isinstance(data, pd.Series):
+            obs_names = ['vscore']
+        elif isinstance(data, pd.DataFrame):
+            obs_names = data.index.tolist()
+        elif isinstance(data, AnnData):
+            obs_names = data.obs_names.tolist()
         
         results = {}
-        for obs_name in adata.obs_names:
+        for obs_name in obs_names:
             # Get data for this observation
             ranks = full_results[('rank', obs_name)]
             logits = full_results[('logit', obs_name)]
@@ -284,14 +339,17 @@ class DrugReflector:
         
         return results
     
-    def predict(self, adata: AnnData, n_top: int = 50) -> Dict[str, pd.DataFrame]:
+    def predict(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 50) -> Dict[str, pd.DataFrame]:
         """
         Make predictions and return top-ranked compounds.
         
         Parameters
         ----------
-        adata : AnnData
-            Input gene expression data
+        data : pd.Series, pd.DataFrame, or AnnData
+            Input v-score data:
+            - Series: v-scores indexed by genes
+            - DataFrame: rows=transitions, columns=genes, values=v-scores
+            - AnnData: v-scores in .X, genes in .var, transitions in .obs
         n_top : int, default=50
             Number of top compounds to return per observation
             
@@ -300,4 +358,4 @@ class DrugReflector:
         Dict[str, pd.DataFrame]
             Dictionary with observation names as keys and ranked predictions as values
         """
-        return self.get_top_compounds(adata, n_top=n_top, compute_pvalues=False)
+        return self.get_top_compounds(data, n_top=n_top, compute_pvalues=False)
