@@ -104,8 +104,9 @@ model = DrugReflector(checkpoint_paths=model_paths)
 
 # Step 3: Make predictions using v-scores (accepts Series, DataFrame, or AnnData)
 predictions = model.predict_ranks_on_adata(vscores_df, n_top=50)
+# Returns DataFrame with compounds as rows, transitions/metrics as columns
 
-# Get top compounds
+# Get top compounds  
 top_compounds = model.get_top_compounds(vscores_df, n_top=10)
 print("Top 10 compounds for each sample:")
 print(top_compounds)
@@ -224,21 +225,22 @@ from drugreflector import compute_vscores_adata, compute_vscore_two_groups
 vscores = compute_vscores_adata(
     adata, 
     group_col='cell_type',      # Column identifying groups
-    group0_value='control',     # Reference group
-    group1_value='treatment',   # Comparison group
+    group1_value='control',     # Reference group
+    group2_value='treatment',   # Comparison group
     layer=None                  # Use .X, or specify layer name
 )
 
-# vscores is a pandas Series with gene names as index
+# vscores is a pandas Series with gene names as index and informative name
+print(f"V-score comparison: {vscores.name}")  # e.g., "cell_type:control->treatment"
 print(f"Top upregulated genes:")
 print(vscores.nlargest(10))
 print(f"Top downregulated genes:")
 print(vscores.nsmallest(10))
 
 # For two arrays directly
-group0_values = [1.2, 0.8, 1.5, 0.9]
-group1_values = [2.1, 1.9, 2.3, 2.0]
-vscore = compute_vscore_two_groups(group0_values, group1_values)
+group1_values = [1.2, 0.8, 1.5, 0.9]  # Reference/control
+group2_values = [2.1, 1.9, 2.3, 2.0]  # Treatment/comparison
+vscore = compute_vscore_two_groups(group1_values, group2_values)
 ```
 
 ## Data Utilities
@@ -267,8 +269,8 @@ from drugreflector import compute_vscores
 # Use v-scores in existing workflow
 transitions = {
     'group_col': 'cell_type',
-    'group0_value': 'control',
-    'group1_value': 'treatment'
+    'group1_value': 'control',
+    'group2_value': 'treatment'
 }
 
 vscores_adata = compute_vscores(adata, transitions=transitions)

@@ -204,7 +204,7 @@ class DrugReflector:
             
             df = df.loc[list(top_compounds)]
         
-        return df.transpose()
+        return df
     
     def compute_background_distribution(self, n_samples: int = 1000, 
                                        random_state: int = 42):
