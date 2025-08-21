@@ -14,6 +14,7 @@ from .utils import (
     compute_vscores_adata,
     pseudobulk_adata
 )
+from .signature_refinement import SignatureRefinement
 
 __version__ = "1.0.0"
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "compute_vscores",
     "compute_vscore_two_groups",
     "compute_vscores_adata",
-    "pseudobulk_adata"
+    "pseudobulk_adata",
+    "SignatureRefinement"
 ]

@@ -69,7 +69,10 @@ deep-virtual-screening/
 ```python
 import pandas as pd
 import scanpy as sc
-from drugreflector import DrugReflector, compute_vscores_adata
+import drugreflector as dr
+
+# All major classes available at top level
+# dr.DrugReflector, dr.SignatureRefinement, dr.compute_vscores_adata, etc.
 
 # Step 1: Load PBMC 3k dataset with cell type annotations
 adata = sc.datasets.pbmc3k()  # Unfiltered dataset with more genes
@@ -79,7 +82,7 @@ annots = sc.datasets.pbmc3k_processed().obs  # Cell type annotations
 adata.obs = pd.merge(adata.obs, annots, how='left', left_index=True, right_index=True)
 
 # Step 2: Compute v-scores between two monocyte populations
-vscores = compute_vscores_adata(
+vscores = dr.compute_vscores_adata(
     adata, 
     group_col='louvain',
     group1_value='CD14+ Monocytes',    # Classical monocytes
@@ -98,7 +101,7 @@ model_paths = [
     'checkpoints/model_fold_2.pt'
 ]
 
-model = DrugReflector(checkpoint_paths=model_paths)
+model = dr.DrugReflector(checkpoint_paths=model_paths)
 
 # Step 4: Make predictions using v-scores
 # DrugReflector will automatically preprocess gene names to HGNC format
@@ -197,15 +200,15 @@ predictions = model.transform(vscores)
 Refine transcriptional signatures using paired transcriptional + phenotypic data:
 
 ```python
-from drugreflector.signature_refinement import SignatureRefinement
+import drugreflector as dr
 import pandas as pd
 
 # Starting signature (pandas Series with gene names as index)
 starting_signature = pd.Series([1.2, -0.8, 0.5, ...], 
                               index=['GENE1', 'GENE2', 'GENE3', ...])
 
-# Initialize signature refinement
-refiner = SignatureRefinement(starting_signature)
+# Initialize signature refinement (available at top level)
+refiner = dr.SignatureRefinement(starting_signature)
 
 # Load experimental data (AnnData with compound treatments)
 # adata should have:
