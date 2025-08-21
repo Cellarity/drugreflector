@@ -67,20 +67,31 @@ deep-virtual-screening/
 ### Basic Drug Screening
 
 ```python
-import numpy as np
-from drugreflector import DrugReflector, create_synthetic_gene_expression
+import pandas as pd
+import scanpy as sc
+from drugreflector import DrugReflector, compute_vscores_adata
 
-# Load your gene expression data (AnnData format)
-# adata = load_your_data()  # Replace with your data loading
+# Step 1: Load PBMC 3k dataset with cell type annotations
+adata = sc.datasets.pbmc3k()  # Unfiltered dataset with more genes
+annots = sc.datasets.pbmc3k_processed().obs  # Cell type annotations
 
-# For demonstration, create synthetic data
-adata = create_synthetic_gene_expression(
-    n_obs=3,
-    n_vars=978,  # 978 landmark genes
-    obs_names=['sample_A', 'sample_B', 'sample_C']
+# Merge annotations
+adata.obs = pd.merge(adata.obs, annots, how='left', left_index=True, right_index=True)
+
+# Step 2: Compute v-scores between two monocyte populations
+vscores = compute_vscores_adata(
+    adata, 
+    group_col='louvain',
+    group1_value='CD14+ Monocytes',    # Classical monocytes
+    group2_value='FCGR3A+ Monocytes'   # Non-classical monocytes
 )
 
-# Initialize DrugReflector with model checkpoints
+print(f"V-score comparison: {vscores.name}")
+print(f"Computed v-scores for {len(vscores)} genes")
+print(f"Top upregulated genes in FCGR3A+ vs CD14+ monocytes:")
+print(vscores.nlargest(10))
+
+# Step 3: Initialize DrugReflector with model checkpoints
 model_paths = [
     'checkpoints/model_fold_0.pt',
     'checkpoints/model_fold_1.pt', 
@@ -89,13 +100,22 @@ model_paths = [
 
 model = DrugReflector(checkpoint_paths=model_paths)
 
-# Make predictions (get top 50 compounds for each sample)
-predictions = model.predict_ranks_on_adata(adata, n_top=50)
+# Step 4: Make predictions using v-scores
+# DrugReflector will automatically preprocess gene names to HGNC format
+predictions = model.predict(vscores, n_top=50)
+print(f"Prediction results shape: {predictions.shape}")
+print(f"Columns: {predictions.columns.names}")
 
-# Get top compounds
-top_compounds = model.get_top_compounds(adata, n_top=10)
-print("Top 10 compounds for each sample:")
-print(top_compounds)
+# Access different metrics
+print("\nTop 10 predicted compounds by rank:")
+rank_col = ('rank', vscores.name)  # Uses informative name: 'louvain:CD14+ Monocytes->FCGR3A+ Monocytes'
+print(predictions[rank_col].nsmallest(10))
+
+print("\nTop 10 compounds by probability:")
+prob_col = ('prob', vscores.name)  
+print(predictions[prob_col].nlargest(10))
+
+print(f"\nAvailable columns: {list(predictions.columns)}")
 ```
 
 ### Computing P-values
@@ -104,13 +124,91 @@ print(top_compounds)
 # Compute background distribution for p-value calculation
 model.compute_background_distribution(n_samples=1000)
 
-# Get predictions with p-values
-predictions_with_pvals = model.predict_ranks_on_adata(
-    adata, 
+# Get predictions with p-values using v-score data
+predictions_with_pvals = model.predict(
+    vscores, 
     compute_pvalues=True, 
     n_top=50
 )
+
+# Access p-values
+pval_col = ('pvalue', vscores.name)
+print("Top compounds with lowest p-values:")
+print(predictions_with_pvals[pval_col].nsmallest(10))
 ```
+
+### Input Formats for DrugReflector
+
+DrugReflector accepts v-score data in three formats:
+
+```python
+# 1. Pandas Series (single v-score vector)
+# The series name will be used as the transition identifier in outputs
+vscore_series = pd.Series([1.2, -0.8, 0.5, ...], index=['GENE1', 'GENE2', 'GENE3', ...], 
+                         name='treatment:control->drug')
+predictions = model.predict(vscore_series)
+# Columns will be: ('rank', 'treatment:control->drug'), ('logit', 'treatment:control->drug'), etc.
+
+# 2. Pandas DataFrame (multiple transitions/signatures)
+vscores_df = pd.DataFrame({
+    'GENE1': [1.2, 0.8],
+    'GENE2': [-0.8, 1.1], 
+    'GENE3': [0.5, -0.3]
+}, index=['treatment_A', 'treatment_B'])
+predictions = model.predict(vscores_df)
+
+# 3. AnnData (v-scores in .X)
+vscores_adata = AnnData(
+    X=vscores_df.values,
+    var=pd.DataFrame(index=vscores_df.columns),
+    obs=pd.DataFrame(index=vscores_df.index)
+)
+predictions = model.predict(vscores_adata)
+```
+
+## Gene Symbol Requirements
+
+**CRITICAL**: DrugReflector requires gene names in HGNC (HUGO Gene Nomenclature Committee) format for accurate predictions.
+
+### Automatic Gene Name Preprocessing
+
+DrugReflector automatically preprocesses gene names to be HGNC-compatible:
+
+```python
+# Example of automatic preprocessing
+import pandas as pd
+from drugreflector import DrugReflector
+
+# Input with mixed gene name formats
+mixed_genes = ['tp53', 'EGFR', 'ENSG00000141510.11', 'CDKN1A_at', 'il6.v2']
+vscores = pd.Series([1.2, -0.8, 0.5, 2.1, -1.1], index=mixed_genes)
+
+model = DrugReflector(checkpoint_paths=model_paths)
+predictions = model.transform(vscores)
+
+# Output shows preprocessing:
+# Preprocessing gene names to HGNC format...
+# Preprocessed 4/5 gene names for HGNC compatibility
+# Examples of changes:
+#   tp53 -> TP53
+#   ENSG00000141510.11 -> ENSG00000141510
+#   CDKN1A_at -> CDKN1A
+#   il6.v2 -> IL6
+```
+
+### HGNC Format Rules Applied
+
+1. **Uppercase conversion**: `tp53` → `TP53`
+2. **Remove Ensembl versions**: `ENSG00000141510.11` → `ENSG00000141510`  
+3. **Remove Affymetrix suffixes**: `CDKN1A_at` → `CDKN1A`
+4. **Remove version numbers**: `IL6.v2` → `IL6`
+5. **Clean non-standard characters**: Keep only `A-Z`, `0-9`, and `-`
+
+### Best Practices
+
+- **Preferred**: Use official HGNC symbols (`TP53`, `EGFR`, `CDKN1A`)
+- **Acceptable**: Mixed case, common prefixes/suffixes (automatically cleaned)
+- **Check coverage**: Ensure your genes overlap with the 978 landmark genes used by the model
 
 ## Signature Refinement
 
@@ -185,21 +283,22 @@ from drugreflector import compute_vscores_adata, compute_vscore_two_groups
 vscores = compute_vscores_adata(
     adata, 
     group_col='cell_type',      # Column identifying groups
-    group0_value='control',     # Reference group
-    group1_value='treatment',   # Comparison group
+    group1_value='control',     # Reference group
+    group2_value='treatment',   # Comparison group
     layer=None                  # Use .X, or specify layer name
 )
 
-# vscores is a pandas Series with gene names as index
+# vscores is a pandas Series with gene names as index and informative name
+print(f"V-score comparison: {vscores.name}")  # e.g., "cell_type:control->treatment"
 print(f"Top upregulated genes:")
 print(vscores.nlargest(10))
 print(f"Top downregulated genes:")
 print(vscores.nsmallest(10))
 
 # For two arrays directly
-group0_values = [1.2, 0.8, 1.5, 0.9]
-group1_values = [2.1, 1.9, 2.3, 2.0]
-vscore = compute_vscore_two_groups(group0_values, group1_values)
+group1_values = [1.2, 0.8, 1.5, 0.9]  # Reference/control
+group2_values = [2.1, 1.9, 2.3, 2.0]  # Treatment/comparison
+vscore = compute_vscore_two_groups(group1_values, group2_values)
 ```
 
 ## Data Utilities
@@ -228,8 +327,8 @@ from drugreflector import compute_vscores
 # Use v-scores in existing workflow
 transitions = {
     'group_col': 'cell_type',
-    'group0_value': 'control',
-    'group1_value': 'treatment'
+    'group1_value': 'control',
+    'group2_value': 'treatment'
 }
 
 vscores_adata = compute_vscores(adata, transitions=transitions)
@@ -256,9 +355,11 @@ python drugreflector/predict.py input.h5ad \
 - **device**: PyTorch device ('cuda', 'cpu', or 'auto')
 
 #### Methods
-- `predict_ranks_on_adata(adata, n_top=50, compute_pvalues=False)`: Get ranked compound predictions
-- `get_top_compounds(adata, n_top=10)`: Get top N compounds for each sample
+- `predict(data, n_top=None, compute_pvalues=False)`: Get compound predictions with ranks, scores, probabilities
+- `get_top_compounds(data, n_top=10)`: Get top N compounds as separate DataFrames  
+- `predict_top_compounds(data, n_top=50)`: Alias for get_top_compounds
 - `compute_background_distribution(n_samples=1000)`: Compute background for p-values
+- `check_gene_coverage(gene_names)`: Check how many genes are recognized by the model
 
 ### SignatureRefinement Class
 
@@ -285,7 +386,11 @@ python drugreflector/predict.py input.h5ad \
 ### Gene Expression Data
 - **Format**: AnnData objects (.h5ad files)
 - **Genes**: Must include the 978 landmark genes used by the model
-- **Samples**: Expression profiles for compounds/treatments of interest
+- **Gene Symbols**: **CRITICAL** - Gene names must be in HGNC (HUGO Gene Nomenclature Committee) format
+  - Examples: `TP53`, `EGFR`, `CDKN1A`, `IL6`
+  - DrugReflector automatically converts gene names to HGNC-compatible format (uppercase, removes prefixes/suffixes)
+  - Supported input formats: Ensembl IDs, Affymetrix probe IDs, mixed case symbols
+- **Samples**: Expression profiles for compounds/treatments of interest  
 - **Preprocessing**: Log-transformed, normalized expression values
 
 ### Model Checkpoints
@@ -311,6 +416,40 @@ Model checkpoints: DOI 10.5281/zenodo.16912445
 ## License
 
 [TBD]
+
+## Troubleshooting
+
+### Scikit-learn Version Warning
+
+If you see a warning about scikit-learn version mismatch:
+```
+InconsistentVersionWarning: Trying to unpickle estimator LabelEncoder from version 1.2.2 when using version 1.5.1
+```
+
+This occurs because the model checkpoints were trained with scikit-learn 1.2.2. The warning is generally harmless and does not affect functionality, but indicates a version difference between training and inference environments.
+
+### Gene Symbol Issues
+
+If you get unexpected results or low prediction scores:
+
+1. **Check gene name format**: Ensure genes are in HGNC format or compatible
+2. **Verify gene coverage**: Check how many of your genes overlap with the 978 landmark genes
+3. **Review preprocessing output**: DrugReflector shows which genes were modified during preprocessing
+
+```python
+# Check gene coverage using built-in function
+coverage = model.check_gene_coverage(your_data.var_names)
+print(f"Gene coverage: {coverage['total_found']}/{coverage['total_input']} ({coverage['coverage_percent']:.1f}%)")
+
+# See which genes were not found
+if coverage['missing_genes']:
+    print(f"Missing genes: {coverage['missing_genes'][:10]}")  # Show first 10
+
+# See preprocessing changes
+for gene_info in coverage['gene_mapping'][:5]:  # Show first 5
+    if gene_info['original'] != gene_info['processed']:
+        print(f"  {gene_info['original']} -> {gene_info['processed']} ({'found' if gene_info['found'] else 'not found'})")
+```
 
 ## Support
 

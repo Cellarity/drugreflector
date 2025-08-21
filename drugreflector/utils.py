@@ -41,30 +41,3 @@ def clip_rescale_rows(X, clip, target_std, bounds=(0, 1e3)):
     np.clip(X, -clip, clip, out=X)
 
 
-def compute_vscores(adata, transitions=None, mute=False):
-    """
-    Compute v-scores for gene expression data.
-    
-    Parameters
-    ----------
-    adata : AnnData
-        Gene expression data
-    transitions : dict, optional
-        Transition specifications for v-score computation (not yet implemented)
-    mute : bool, default=False
-        Whether to suppress warnings
-        
-    Returns
-    -------
-    AnnData
-        Processed v-scores
-    """
-    if transitions is not None:
-        raise ValueError('cannnot do transitions yet')
-        # TODO: implement v-score computation for transitions
-    else:
-        if not mute:
-            warnings.warn('Assuming passed representation is v-score.', stacklevel=1)
-        vscores = adata.copy()
-
-    return vscores
