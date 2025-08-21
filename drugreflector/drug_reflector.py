@@ -122,9 +122,34 @@ class DrugReflector:
         # Clip and rescale rows
         clip_rescale_rows(vscores.X, clip=2, target_std=1)
 
-        # Standardize gene names
+        # Verbose preprocessing of gene names to make them HGNC-compatible
+        print("Preprocessing gene names to HGNC format...")
+        original_names = vscores.var_names.copy()
+        
+        # Convert to uppercase (HGNC standard)
         vscores.var_names = vscores.var_names.str.upper()
+        
+        # Remove common prefixes/suffixes that aren't HGNC
+        vscores.var_names = vscores.var_names.str.replace(r'^ENSG\d+\.', '', regex=True)  # Remove Ensembl IDs
+        vscores.var_names = vscores.var_names.str.replace(r'_AT$', '', regex=True)  # Remove Affymetrix suffixes
+        vscores.var_names = vscores.var_names.str.replace(r'\..*$', '', regex=True)  # Remove version numbers
+        vscores.var_names = vscores.var_names.str.replace(r'[^A-Z0-9\-]', '', regex=True)  # Keep only alphanumeric and hyphens
+        
+        # Make unique (handles duplicates after preprocessing)
         vscores.var_names_make_unique()
+        
+        # Report preprocessing changes
+        changed_genes = sum(original_names != vscores.var_names)
+        if changed_genes > 0:
+            print(f"Preprocessed {changed_genes}/{len(original_names)} gene names for HGNC compatibility")
+            print("Examples of changes:")
+            for i, (old, new) in enumerate(zip(original_names, vscores.var_names)):
+                if old != new and i < 5:  # Show first 5 changes
+                    print(f"  {old} -> {new}")
+            if changed_genes > 5:
+                print(f"  ... and {changed_genes - 5} more")
+        else:
+            print("Gene names already in HGNC-compatible format")
 
         self._X_landmarks = vscores
         self._weights_x = None
@@ -359,3 +384,56 @@ class DrugReflector:
             Dictionary with observation names as keys and ranked predictions as values
         """
         return self.get_top_compounds(data, n_top=n_top, compute_pvalues=False)
+    
+    def check_gene_coverage(self, gene_names):
+        """
+        Check how many input genes are recognized by the model.
+        
+        Parameters
+        ----------
+        gene_names : list or pd.Index
+            Gene names to check
+            
+        Returns
+        -------
+        dict
+            Dictionary with coverage statistics and gene mappings
+        """
+        import pandas as pd
+        
+        # Get model gene names (from first model for consistency)
+        model_genes = set(self.model.dimensions['var_names'][0])
+        
+        # Preprocess input gene names using same logic as transform
+        input_genes = pd.Index(gene_names)
+        
+        # Apply HGNC preprocessing
+        processed_genes = input_genes.str.upper()
+        processed_genes = processed_genes.str.replace(r'^ENSG\d+\.', '', regex=True)
+        processed_genes = processed_genes.str.replace(r'_AT$', '', regex=True)
+        processed_genes = processed_genes.str.replace(r'\..*$', '', regex=True)
+        processed_genes = processed_genes.str.replace(r'[^A-Z0-9\-]', '', regex=True)
+        
+        # Find overlaps
+        overlap = set(processed_genes).intersection(model_genes)
+        
+        # Create mapping of original -> processed -> found
+        gene_mapping = []
+        for orig, proc in zip(input_genes, processed_genes):
+            found = proc in model_genes
+            gene_mapping.append({
+                'original': orig,
+                'processed': proc,
+                'found': found
+            })
+        
+        coverage_stats = {
+            'total_input': len(input_genes),
+            'total_found': len(overlap),
+            'coverage_percent': len(overlap) / len(input_genes) * 100 if len(input_genes) > 0 else 0,
+            'gene_mapping': gene_mapping,
+            'missing_genes': [g['original'] for g in gene_mapping if not g['found']],
+            'found_genes': [g['original'] for g in gene_mapping if g['found']]
+        }
+        
+        return coverage_stats

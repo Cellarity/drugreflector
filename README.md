@@ -85,13 +85,16 @@ adata = create_synthetic_gene_expression(
 # (Assumes you have control/treatment groups in your data)
 # vscores = compute_vscores_adata(adata, 'treatment', 'control', 'drug_treated')
 
-# For demo, create synthetic v-scores as pandas DataFrame
-genes = [f"GENE{i}" for i in range(978)]
+# For demo, create synthetic v-scores as pandas DataFrame with HGNC gene symbols
+genes = [f"GENE{i}" for i in range(978)]  # In practice, use real HGNC symbols like 'TP53', 'EGFR'
 vscores_df = pd.DataFrame(
     np.random.normal(0, 1, (3, 978)),
-    index=['sample_A', 'sample_B', 'sample_C'],
+    index=['sample_A', 'sample_B', 'sample_C'], 
     columns=genes
 )
+
+# Note: DrugReflector will automatically convert gene names to HGNC format
+print("Gene names will be automatically converted to HGNC format during prediction")
 
 # Step 2: Initialize DrugReflector with model checkpoints
 model_paths = [
@@ -151,6 +154,50 @@ vscores_adata = AnnData(
 )
 predictions = model.predict_ranks_on_adata(vscores_adata)
 ```
+
+## Gene Symbol Requirements
+
+**CRITICAL**: DrugReflector requires gene names in HGNC (HUGO Gene Nomenclature Committee) format for accurate predictions.
+
+### Automatic Gene Name Preprocessing
+
+DrugReflector automatically preprocesses gene names to be HGNC-compatible:
+
+```python
+# Example of automatic preprocessing
+import pandas as pd
+from drugreflector import DrugReflector
+
+# Input with mixed gene name formats
+mixed_genes = ['tp53', 'EGFR', 'ENSG00000141510.11', 'CDKN1A_at', 'il6.v2']
+vscores = pd.Series([1.2, -0.8, 0.5, 2.1, -1.1], index=mixed_genes)
+
+model = DrugReflector(checkpoint_paths=model_paths)
+predictions = model.transform(vscores)
+
+# Output shows preprocessing:
+# Preprocessing gene names to HGNC format...
+# Preprocessed 4/5 gene names for HGNC compatibility
+# Examples of changes:
+#   tp53 -> TP53
+#   ENSG00000141510.11 -> ENSG00000141510
+#   CDKN1A_at -> CDKN1A
+#   il6.v2 -> IL6
+```
+
+### HGNC Format Rules Applied
+
+1. **Uppercase conversion**: `tp53` → `TP53`
+2. **Remove Ensembl versions**: `ENSG00000141510.11` → `ENSG00000141510`  
+3. **Remove Affymetrix suffixes**: `CDKN1A_at` → `CDKN1A`
+4. **Remove version numbers**: `IL6.v2` → `IL6`
+5. **Clean non-standard characters**: Keep only `A-Z`, `0-9`, and `-`
+
+### Best Practices
+
+- **Preferred**: Use official HGNC symbols (`TP53`, `EGFR`, `CDKN1A`)
+- **Acceptable**: Mixed case, common prefixes/suffixes (automatically cleaned)
+- **Check coverage**: Ensure your genes overlap with the 978 landmark genes used by the model
 
 ## Signature Refinement
 
@@ -297,9 +344,10 @@ python drugreflector/predict.py input.h5ad \
 - **device**: PyTorch device ('cuda', 'cpu', or 'auto')
 
 #### Methods
-- `predict_ranks_on_adata(adata, n_top=50, compute_pvalues=False)`: Get ranked compound predictions
-- `get_top_compounds(adata, n_top=10)`: Get top N compounds for each sample
+- `predict_ranks_on_adata(data, n_top=50, compute_pvalues=False)`: Get ranked compound predictions
+- `get_top_compounds(data, n_top=10)`: Get top N compounds for each sample
 - `compute_background_distribution(n_samples=1000)`: Compute background for p-values
+- `check_gene_coverage(gene_names)`: Check how many genes are recognized by the model
 
 ### SignatureRefinement Class
 
@@ -326,7 +374,11 @@ python drugreflector/predict.py input.h5ad \
 ### Gene Expression Data
 - **Format**: AnnData objects (.h5ad files)
 - **Genes**: Must include the 978 landmark genes used by the model
-- **Samples**: Expression profiles for compounds/treatments of interest
+- **Gene Symbols**: **CRITICAL** - Gene names must be in HGNC (HUGO Gene Nomenclature Committee) format
+  - Examples: `TP53`, `EGFR`, `CDKN1A`, `IL6`
+  - DrugReflector automatically converts gene names to HGNC-compatible format (uppercase, removes prefixes/suffixes)
+  - Supported input formats: Ensembl IDs, Affymetrix probe IDs, mixed case symbols
+- **Samples**: Expression profiles for compounds/treatments of interest  
 - **Preprocessing**: Log-transformed, normalized expression values
 
 ### Model Checkpoints
@@ -363,6 +415,29 @@ InconsistentVersionWarning: Trying to unpickle estimator LabelEncoder from versi
 ```
 
 This occurs because the model checkpoints were trained with scikit-learn 1.2.2. The warning is generally harmless and does not affect functionality, but indicates a version difference between training and inference environments.
+
+### Gene Symbol Issues
+
+If you get unexpected results or low prediction scores:
+
+1. **Check gene name format**: Ensure genes are in HGNC format or compatible
+2. **Verify gene coverage**: Check how many of your genes overlap with the 978 landmark genes
+3. **Review preprocessing output**: DrugReflector shows which genes were modified during preprocessing
+
+```python
+# Check gene coverage using built-in function
+coverage = model.check_gene_coverage(your_data.var_names)
+print(f"Gene coverage: {coverage['total_found']}/{coverage['total_input']} ({coverage['coverage_percent']:.1f}%)")
+
+# See which genes were not found
+if coverage['missing_genes']:
+    print(f"Missing genes: {coverage['missing_genes'][:10]}")  # Show first 10
+
+# See preprocessing changes
+for gene_info in coverage['gene_mapping'][:5]:  # Show first 5
+    if gene_info['original'] != gene_info['processed']:
+        print(f"  {gene_info['original']} -> {gene_info['processed']} ({'found' if gene_info['found'] else 'not found'})")
+```
 
 ## Support
 
