@@ -7,11 +7,8 @@ predictions from gene expression signatures.
 
 import numpy as np
 import pandas as pd
-import torch
-from typing import Optional, Dict, Any, List, Union
+from typing import Dict, List, Union
 from anndata import AnnData
-import warnings
-import scipy.stats as stats
 from scipy.special import softmax
 
 from .ensemble_model import EnsembleModel
@@ -52,7 +49,6 @@ class DrugReflector:
         
         # Load ensemble model
         self.model = EnsembleModel(checkpoint_paths)
-        self.background_distribution = None
         
         # Store compound information
         self.compound_names = self.model.dimensions['output_names']
@@ -161,10 +157,9 @@ class DrugReflector:
         
         return scores
     
-    def predict(self, data: Union[pd.Series, pd.DataFrame, AnnData], 
-                compute_pvalues: bool = False, n_top: int = None) -> pd.DataFrame:
+    def predict(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = None) -> pd.DataFrame:
         """
-        Predict compound rankings with scores, probabilities, and optionally p-values.
+        Predict compound rankings with scores and probabilities.
         
         Parameters
         ----------
@@ -173,8 +168,6 @@ class DrugReflector:
             - Series: v-scores indexed by genes
             - DataFrame: rows=transitions, columns=genes, values=v-scores
             - AnnData: v-scores in .X, genes in .var, transitions in .obs
-        compute_pvalues : bool, default=False
-            Whether to compute p-values using background distribution
         n_top : int, optional
             Number of top compounds to include in output
             
@@ -185,7 +178,6 @@ class DrugReflector:
             - ('rank', transition_name): Compound ranks (1=best)
             - ('logit', transition_name): Raw model scores
             - ('prob', transition_name): Softmax probabilities
-            - ('pvalue', transition_name): P-values (if compute_pvalues=True)
         """
         # Get predictions
         predictions = self.transform(data, ranks=True)
@@ -213,15 +205,6 @@ class DrugReflector:
         for i, obs_name in enumerate(obs_names):
             output_data[('prob', obs_name)] = probs[i]
         
-        # Add p-values if requested
-        if compute_pvalues:
-            if self.background_distribution is None:
-                raise ValueError("Background distribution not computed. Call compute_background_distribution() first.")
-            
-            pvalues = self._compute_pvalues(scores)
-            for i, obs_name in enumerate(obs_names):
-                output_data[('pvalue', obs_name)] = pvalues[i]
-        
         # Create DataFrame
         df = pd.DataFrame(output_data, index=self.compound_names)
         
@@ -237,82 +220,8 @@ class DrugReflector:
         
         return df
     
-    def compute_background_distribution(self, n_samples: int = 1000, 
-                                       random_state: int = 42):
-        """
-        Compute background distribution for p-value calculation.
-        
-        Parameters
-        ----------
-        n_samples : int, default=1000
-            Number of random samples to generate
-        random_state : int, default=42
-            Random seed for reproducibility
-        """
-        np.random.seed(random_state)
-        
-        # Get input dimensions from first model
-        input_size = None
-        for var_names in self.model.dimensions['var_names']:
-            if input_size is None:
-                input_size = len(var_names)
-            elif len(var_names) != input_size:
-                warnings.warn("Models have different input sizes, using first model's size")
-                break
-        
-        # Generate random gene expression data
-        random_data = np.random.normal(0, 1, size=(n_samples, input_size))
-        
-        # Create AnnData with dummy gene names
-        dummy_genes = [f"gene_{i}" for i in range(input_size)]
-        dummy_obs = [f"sample_{i}" for i in range(n_samples)]
-        
-        background_adata = AnnData(
-            X=random_data,
-            obs=pd.DataFrame(index=dummy_obs),
-            var=pd.DataFrame(index=dummy_genes)
-        )
-        
-        # Get predictions for background data
-        background_predictions = self.transform(background_adata, ranks=False)
-        
-        # Store background distribution
-        self.background_distribution = background_predictions.X
-        
-        print(f"Background distribution computed with {n_samples} samples")
     
-    def _compute_pvalues(self, scores: np.ndarray) -> np.ndarray:
-        """
-        Compute p-values using background distribution.
-        
-        Parameters
-        ----------
-        scores : np.ndarray
-            Prediction scores of shape (n_obs, n_compounds)
-            
-        Returns
-        -------
-        np.ndarray
-            P-values of shape (n_obs, n_compounds)
-        """
-        if self.background_distribution is None:
-            raise ValueError("Background distribution not computed")
-        
-        pvalues = np.zeros_like(scores)
-        
-        # Compute p-values for each compound
-        for i in range(self.n_compounds):
-            background_scores = self.background_distribution[:, i]
-            
-            for j in range(scores.shape[0]):
-                # P-value is the fraction of background scores >= observed score
-                pvalue = (background_scores >= scores[j, i]).mean()
-                pvalues[j, i] = pvalue
-        
-        return pvalues
-    
-    def get_top_compounds(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 20, 
-                         compute_pvalues: bool = False) -> Dict[str, pd.DataFrame]:
+    def get_top_compounds(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 20) -> Dict[str, pd.DataFrame]:
         """
         Get top-ranked compounds for each observation.
         
@@ -325,8 +234,6 @@ class DrugReflector:
             - AnnData: v-scores in .X, genes in .var, transitions in .obs
         n_top : int, default=20
             Number of top compounds to return
-        compute_pvalues : bool, default=False
-            Whether to include p-values
             
         Returns
         -------
@@ -334,7 +241,7 @@ class DrugReflector:
             Dictionary with observation names as keys and top compounds as values
         """
         # Get full predictions
-        full_results = self.predict(data, compute_pvalues=compute_pvalues)
+        full_results = self.predict(data)
         
         # Get observation names from the data
         if isinstance(data, pd.Series):
@@ -358,10 +265,6 @@ class DrugReflector:
                 'logit': logits.values,
                 'prob': probs.values
             }
-            
-            if compute_pvalues:
-                pvalues = full_results[('pvalue', obs_name)]
-                df_data['pvalue'] = pvalues.values
             
             df = pd.DataFrame(df_data)
             df = df.sort_values('rank').head(n_top)
@@ -389,7 +292,7 @@ class DrugReflector:
         Dict[str, pd.DataFrame]
             Dictionary with observation names as keys and ranked predictions as values
         """
-        return self.get_top_compounds(data, n_top=n_top, compute_pvalues=False)
+        return self.get_top_compounds(data, n_top=n_top)
     
     def check_gene_coverage(self, gene_names):
         """
