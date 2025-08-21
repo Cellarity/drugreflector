@@ -1,5 +1,5 @@
 """
-DrugReflector V3.5 implementation for deep virtual screening.
+DrugReflector implementation for compound ranking predictions.
 
 This module provides the DrugReflector class for compound ranking
 predictions from gene expression signatures.

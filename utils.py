@@ -1,5 +1,5 @@
 """
-Utility functions for deep virtual screening with DrugReflector.
+Utility functions for DrugReflector.
 
 This module contains core functions for data preprocessing including
 v-score computation and clipping/rescaling operations.

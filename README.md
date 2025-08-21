@@ -28,7 +28,7 @@ This package provides tools for virtual drug screening using transcriptional sig
 1. Clone this repository:
 ```bash
 git clone <repository-url>
-cd deep-virtual-screening
+cd drugreflector
 ```
 
 Or install via pip:
@@ -52,12 +52,14 @@ The trained model checkpoints are available on Zenodo at DOI **10.5281/zenodo.16
 
 After downloading, your directory structure should look like:
 ```
-deep-virtual-screening/
+drugreflector/
 ├── checkpoints/
 │   ├── model_fold_0.pt
 │   ├── model_fold_1.pt
 │   └── model_fold_2.pt
-├── drugreflector.py
+├── drugreflector/
+│   ├── drug_reflector.py
+│   └── ...
 ├── utils.py
 └── ...
 ```

@@ -27,7 +27,7 @@ classifiers = [
 ]
 keywords = [
     "drug discovery",
-    "virtual screening", 
+    "compound ranking", 
     "gene expression",
     "transcriptional signatures",
     "neural networks",

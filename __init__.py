@@ -1,5 +1,5 @@
 """
-Deep Virtual Screening with DrugReflector V3.5
+DrugReflector
 
 A minimal implementation for compound ranking predictions from gene expression signatures
 using ensemble neural network models.
