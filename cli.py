@@ -115,7 +115,7 @@ def main():
         
         # Make predictions (assuming input is v-scores)
         print(f"Making predictions for top {args.n_top} compounds...")
-        predictions = model.predict_ranks_on_adata(
+        predictions = model.predict(
             adata, 
             n_top=args.n_top,
             compute_pvalues=args.compute_pvalues

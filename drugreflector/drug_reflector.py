@@ -159,10 +159,10 @@ class DrugReflector:
         
         return scores
     
-    def predict_ranks_on_adata(self, data: Union[pd.Series, pd.DataFrame, AnnData], 
-                               compute_pvalues: bool = False, n_top: int = None) -> pd.DataFrame:
+    def predict(self, data: Union[pd.Series, pd.DataFrame, AnnData], 
+                compute_pvalues: bool = False, n_top: int = None) -> pd.DataFrame:
         """
-        Predict compound ranks for input v-score data.
+        Predict compound rankings with scores, probabilities, and optionally p-values.
         
         Parameters
         ----------
@@ -179,7 +179,11 @@ class DrugReflector:
         Returns
         -------
         pd.DataFrame
-            Multi-index DataFrame with ranks, scores, probabilities, and optionally p-values
+            DataFrame with compounds as rows and multi-level columns:
+            - ('rank', transition_name): Compound ranks (1=best)
+            - ('logit', transition_name): Raw model scores
+            - ('prob', transition_name): Softmax probabilities
+            - ('pvalue', transition_name): P-values (if compute_pvalues=True)
         """
         # Get predictions
         predictions = self.transform(data, ranks=True)
@@ -328,7 +332,7 @@ class DrugReflector:
             Dictionary with observation names as keys and top compounds as values
         """
         # Get full predictions
-        full_results = self.predict_ranks_on_adata(data, compute_pvalues=compute_pvalues)
+        full_results = self.predict(data, compute_pvalues=compute_pvalues)
         
         # Get observation names from the data
         if isinstance(data, pd.Series):
@@ -364,9 +368,9 @@ class DrugReflector:
         
         return results
     
-    def predict(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 50) -> Dict[str, pd.DataFrame]:
+    def predict_top_compounds(self, data: Union[pd.Series, pd.DataFrame, AnnData], n_top: int = 50) -> Dict[str, pd.DataFrame]:
         """
-        Make predictions and return top-ranked compounds.
+        Make predictions and return top-ranked compounds as separate DataFrames.
         
         Parameters
         ----------
