@@ -77,10 +77,12 @@ class DrugReflector:
         """
         if isinstance(data, pd.Series):
             # Single v-score vector indexed by genes
+            # Use the series name if available, otherwise default to 'vscore'
+            obs_name = data.name if data.name is not None else 'vscore'
             vscores_adata = AnnData(
                 X=data.values.reshape(1, -1),
                 var=pd.DataFrame(index=data.index),
-                obs=pd.DataFrame(index=['vscore'])
+                obs=pd.DataFrame(index=[obs_name])
             )
         elif isinstance(data, pd.DataFrame):
             # Rows = transitions, columns = genes
@@ -336,7 +338,7 @@ class DrugReflector:
         
         # Get observation names from the data
         if isinstance(data, pd.Series):
-            obs_names = ['vscore']
+            obs_names = [data.name if data.name is not None else 'vscore']
         elif isinstance(data, pd.DataFrame):
             obs_names = data.index.tolist()
         elif isinstance(data, AnnData):

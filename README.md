@@ -108,12 +108,14 @@ print(f"Columns: {predictions.columns.names}")
 
 # Access different metrics
 print("\nTop 10 predicted compounds by rank:")
-rank_col = ('rank', vscores.name)
+rank_col = ('rank', vscores.name)  # Uses informative name: 'louvain:CD14+ Monocytes->FCGR3A+ Monocytes'
 print(predictions[rank_col].nsmallest(10))
 
 print("\nTop 10 compounds by probability:")
 prob_col = ('prob', vscores.name)  
 print(predictions[prob_col].nlargest(10))
+
+print(f"\nAvailable columns: {list(predictions.columns)}")
 ```
 
 ### Computing P-values
@@ -141,8 +143,11 @@ DrugReflector accepts v-score data in three formats:
 
 ```python
 # 1. Pandas Series (single v-score vector)
-vscore_series = pd.Series([1.2, -0.8, 0.5, ...], index=['GENE1', 'GENE2', 'GENE3', ...])
+# The series name will be used as the transition identifier in outputs
+vscore_series = pd.Series([1.2, -0.8, 0.5, ...], index=['GENE1', 'GENE2', 'GENE3', ...], 
+                         name='treatment:control->drug')
 predictions = model.predict(vscore_series)
+# Columns will be: ('rank', 'treatment:control->drug'), ('logit', 'treatment:control->drug'), etc.
 
 # 2. Pandas DataFrame (multiple transitions/signatures)
 vscores_df = pd.DataFrame({
