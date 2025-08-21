@@ -56,18 +56,6 @@ def main():
         help="Number of top compounds to return (default: 50)"
     )
     
-    parser.add_argument(
-        "--compute-pvalues", 
-        action="store_true",
-        help="Compute p-values for predictions (requires background distribution)"
-    )
-    
-    parser.add_argument(
-        "--background-samples", 
-        type=int,
-        default=1000,
-        help="Number of samples for background distribution (default: 1000)"
-    )
     
     parser.add_argument(
         "--device", 
@@ -101,25 +89,15 @@ def main():
         
         # Initialize model
         print("Initializing DrugReflector model...")
-        model = DrugReflector(checkpoint_paths=model_paths, device=args.device)
+        model = DrugReflector(checkpoint_paths=model_paths)
         
-        # Compute background distribution if needed
-        if args.compute_pvalues:
-            print(f"Computing background distribution with {args.background_samples} samples...")
-            model.compute_background_distribution(n_samples=args.background_samples)
-        
-        # Note: This CLI assumes raw gene expression data, not v-scores
-        # In practice, you would compute v-scores first using drugreflector.compute_vscores_adata
-        print("Warning: CLI expects v-score data, but got gene expression data.")
+        # Note: This CLI assumes v-score data, not raw gene expression
+        print("Warning: CLI expects v-score data, not raw gene expression.")
         print("In a real workflow, compute v-scores first using drugreflector.compute_vscores_adata")
         
         # Make predictions (assuming input is v-scores)
         print(f"Making predictions for top {args.n_top} compounds...")
-        predictions = model.predict(
-            adata, 
-            n_top=args.n_top,
-            compute_pvalues=args.compute_pvalues
-        )
+        predictions = model.predict(adata, n_top=args.n_top)
         
         # Save results
         print(f"Saving results to {args.output}...")

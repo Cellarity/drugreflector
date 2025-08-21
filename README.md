@@ -118,24 +118,6 @@ print(predictions[prob_col].nlargest(10))
 print(f"\nAvailable columns: {list(predictions.columns)}")
 ```
 
-### Computing P-values
-
-```python
-# Compute background distribution for p-value calculation
-model.compute_background_distribution(n_samples=1000)
-
-# Get predictions with p-values using v-score data
-predictions_with_pvals = model.predict(
-    vscores, 
-    compute_pvalues=True, 
-    n_top=50
-)
-
-# Access p-values
-pval_col = ('pvalue', vscores.name)
-print("Top compounds with lowest p-values:")
-print(predictions_with_pvals[pval_col].nsmallest(10))
-```
 
 ### Input Formats for DrugReflector
 
@@ -355,10 +337,9 @@ python drugreflector/predict.py input.h5ad \
 - **device**: PyTorch device ('cuda', 'cpu', or 'auto')
 
 #### Methods
-- `predict(data, n_top=None, compute_pvalues=False)`: Get compound predictions with ranks, scores, probabilities
+- `predict(data, n_top=None)`: Get compound predictions with ranks, scores, probabilities
 - `get_top_compounds(data, n_top=10)`: Get top N compounds as separate DataFrames  
 - `predict_top_compounds(data, n_top=50)`: Alias for get_top_compounds
-- `compute_background_distribution(n_samples=1000)`: Compute background for p-values
 - `check_gene_coverage(gene_names)`: Check how many genes are recognized by the model
 
 ### SignatureRefinement Class
