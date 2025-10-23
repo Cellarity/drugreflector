@@ -1,6 +1,6 @@
 # DrugReflector
 
-A minimal implementation for compound ranking predictions from gene expression signatures using ensemble neural network models.
+A method for compound ranking predictions from gene expression signatures using ensemble neural network models.
 
 ## Overview
 
