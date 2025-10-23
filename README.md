@@ -27,7 +27,7 @@ This package provides tools for virtual drug screening using transcriptional sig
 
 1. Clone this repository:
 ```bash
-git clone <repository-url>
+git clone git@github.com:Cellarity/drugreflector.git
 cd drugreflector
 ```
 
