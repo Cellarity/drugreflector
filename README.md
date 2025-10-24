@@ -42,7 +42,7 @@ pip install torch numpy pandas scipy anndata scanpy
 ```
 
 3. Download model checkpoints from Zenodo:
-   - **DOI: 10.5281/zenodo.16912445**
+   - **DOI: 10.5281/zenodo.16912444**
    - Download all checkpoint files and place them in the `checkpoints/` directory
    - The checkpoints directory is empty in the git repository - you must download the models separately 
 

@@ -39,13 +39,18 @@ class EnsembleModel:
         self._load_models()
     
     def _load_models(self):
-        """Load all models from checkpoint paths and extract dimensions."""
+        """
+        Load all models from checkpoint paths and extract dimensions.
+
+        Uses weights_only=True for secure loading. Checkpoints must be cleaned
+        to remove cifra/sklearn dependencies (see clean_checkpoint.ipynb).
+        """
         var_names = []
         output_names = []
-        output_encoders = []
-        
+
         for ckpt_path in self.checkpoint_paths:
-            checkpoint = torch.load(ckpt_path, map_location='cpu')
+            # Load checkpoint with weights_only=True for security
+            checkpoint = torch.load(ckpt_path, map_location='cpu', weights_only=True)
             
             # Extract model state dict and dimensions
             model_state_dict = checkpoint['model_state_dict']
@@ -80,22 +85,18 @@ class EnsembleModel:
             
             self._loaded_models.append(model)
             
-            # Store dimensions
+            # Store dimensions (now lists instead of pandas Index)
             var_names.append(checkpoint['dimensions']['input_names'])
             output_names.append(checkpoint['dimensions']['output_names'])
-            
-            # Handle output encoder
-            if 'output_encoder' in checkpoint['dimensions']:
-                output_encoders.append(checkpoint['dimensions']['output_encoder'])
-        
+
         # Validate that all models have the same output classes
-        if not all(all(x == output_names[0]) for x in output_names):
-            raise ValueError("All models must have the same output classes")
-        
+        # Compare lists element-wise since output_names is now list of lists
+        for i in range(1, len(output_names)):
+            if output_names[i] != output_names[0]:
+                raise ValueError(f"Model {i} has different output classes than model 0")
+
         self.dimensions['output_names'] = output_names[0]
         self.dimensions['var_names'] = var_names
-        if output_encoders:
-            self.dimensions['output_encoder'] = output_encoders[0]
     
     @property
     def loaded_models(self):
