@@ -11,10 +11,10 @@ import sys
 import os
 from pathlib import Path
 
-# Add parent directory to path to access utils
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add parent directory to path to allow running as script
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from drug_reflector import DrugReflector
+from drugreflector.drug_reflector import DrugReflector
 from utils import load_h5ad_file
 
 
@@ -68,12 +68,6 @@ def main():
     )
     
     parser.add_argument(
-        "--compute-pvalues",
-        action="store_true",
-        help="Compute p-values using background distribution"
-    )
-    
-    parser.add_argument(
         "--background-samples",
         type=int,
         default=1000,
@@ -122,25 +116,13 @@ def main():
         print(f"Error initializing model: {e}")
         sys.exit(1)
     
-    # Compute background distribution if needed
-    if args.compute_pvalues:
-        if args.verbose:
-            print(f"Computing background distribution with {args.background_samples} samples...")
-        
-        try:
-            model.compute_background_distribution(n_samples=args.background_samples)
-        except Exception as e:
-            print(f"Error computing background distribution: {e}")
-            sys.exit(1)
-    
     if args.verbose:
         print("Making predictions...")
     
     # Make predictions
     try:
-        results = model.predict_ranks_on_adata(
+        results = model.predict(
             adata,
-            compute_pvalues=args.compute_pvalues,
             n_top=args.top_n
         )
         print(f"Generated predictions for {len(adata.obs_names)} observations")
@@ -165,10 +147,7 @@ def main():
     print(f"  Input genes: {adata.n_vars}")
     print(f"  Output compounds: {len(results.index)}")
     print(f"  Top compounds per observation: {args.top_n}")
-    
-    if args.compute_pvalues:
-        print(f"  P-values computed with {args.background_samples} background samples")
-    
+
     # Show sample of results
     if args.verbose and len(results) > 0:
         print("\nSample predictions (first observation, top 5 compounds):")
