@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import warnings
 from scipy.optimize import minimize_scalar
-from anndata import AnnData
+from anndata import AnnData, read_h5ad
 
 
 def _norm_func(data, clip, target_std):
@@ -111,7 +111,7 @@ def load_h5ad_file(filepath: str) -> AnnData:
         Loaded and preprocessed AnnData object
     """
     # Load the H5AD file
-    adata = AnnData.read_h5ad(filepath)
+    adata = read_h5ad(filepath)
     
     # Basic validation
     if adata.X is None:
