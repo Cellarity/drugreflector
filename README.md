@@ -47,11 +47,11 @@ pip install torch numpy pandas scipy anndata scanpy
    - The checkpoints directory is empty in the git repository - you must download the models separately 
 
 4. (optional, for reproducing published results): Download transition signatures. These are scanpy AnnData objects containing v-scores for cell stat transitions in normal hematopoiesis, and between healthy and diseased B-ALL and breast cancer tissue. They can be input to DrugReflector to prioritize compounds, as done in the publication cited below. 
-    - **DOI: 10.5281/zenodo.16921906**
+    - **DOI: 10.5281/zenodo.16921905**
     
 ## Model Checkpoints
 
-The trained model checkpoints are available on Zenodo at DOI **10.5281/zenodo.16912445**.
+The trained model checkpoints are available on Zenodo at DOI **10.5281/zenodo.16912444**.
 
 After downloading, your directory structure should look like:
 ```
