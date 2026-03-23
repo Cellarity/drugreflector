@@ -67,8 +67,8 @@ drugreflector/
 │   └── model_fold_2.pt
 ├── drugreflector/
 │   ├── drug_reflector.py
+│   ├── cli.py
 │   └── ...
-├── utils.py
 └── ...
 ```
 
@@ -333,8 +333,8 @@ vscores_adata = compute_vscores(adata, transitions=transitions)
 ## Command Line Usage
 
 ```bash
-# Example command line usage (if predict.py exists)
-python drugreflector/predict.py input.h5ad \
+# After pip install -e .
+drugreflector input.h5ad \
     --model1 checkpoints/model_fold_0.pt \
     --model2 checkpoints/model_fold_1.pt \
     --model3 checkpoints/model_fold_2.pt \
