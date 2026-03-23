@@ -6,7 +6,8 @@ Command-line interface for DrugReflector.
 import argparse
 import sys
 from pathlib import Path
-from drugreflector import DrugReflector, load_h5ad_file
+from .drug_reflector import DrugReflector
+from .utils import load_h5ad_file
 
 
 def main():

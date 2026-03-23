@@ -1,5 +1,8 @@
 """
-DrugReflector module for compound ranking predictions.
+DrugReflector
+
+A minimal implementation for compound ranking predictions from gene expression signatures
+using ensemble neural network models.
 """
 
 from .drug_reflector import DrugReflector
@@ -13,7 +16,9 @@ from .utils import (
     compute_vscores_adata,
     pseudobulk_adata,
 )
+from .signature_refinement import SignatureRefinement
 
+__version__ = "1.0.0"
 __all__ = [
     "DrugReflector",
     "EnsembleModel",
@@ -24,4 +29,5 @@ __all__ = [
     "compute_vscore_two_groups",
     "compute_vscores_adata",
     "pseudobulk_adata",
+    "SignatureRefinement",
 ]

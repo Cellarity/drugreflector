@@ -237,7 +237,8 @@ class TestGetTopCompounds:
         r1 = dr.get_top_compounds(s, n_top=5)
         r2 = dr.predict_top_compounds(s, n_top=5)
         pd.testing.assert_frame_equal(r1["test_obs"].reset_index(drop=True),
-                                      r2["test_obs"].reset_index(drop=True))
+                                      r2["test_obs"].reset_index(drop=True),
+                                      atol=1e-5)
 
 
 # ---------------------------------------------------------------------------

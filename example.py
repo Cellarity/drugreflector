@@ -8,7 +8,7 @@ predictions from gene expression data.
 
 import numpy as np
 from drugreflector import DrugReflector
-from utils import create_synthetic_gene_expression
+from drugreflector import create_synthetic_gene_expression
 
 
 def main():

@@ -6,7 +6,7 @@ import pandas as pd
 import warnings
 from anndata import AnnData
 
-from signature_refinement.signature_refinement import SignatureRefinement
+from drugreflector import SignatureRefinement
 
 
 # ---------------------------------------------------------------------------

@@ -12,12 +12,8 @@ from typing import Optional, Union, List
 from anndata import AnnData, concat
 from scipy.stats import pearsonr
 import scipy.sparse as sp
-import sys
-import os
 
-# Add parent directory to path to access utils
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import pseudobulk_adata
+from ..utils import pseudobulk_adata
 
 
 class SignatureRefinement:
