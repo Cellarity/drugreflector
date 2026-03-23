@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from drugreflector.drug_reflector import DrugReflector
-from utils import load_h5ad_file
+from drugreflector.utils import load_h5ad_file
 
 
 def main():
