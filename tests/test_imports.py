@@ -1,9 +1,29 @@
-"""Tests for package imports and API surface.
+"""Tests for package imports and API surface."""
 
-Note: The editable install maps 'drugreflector' to the repo root, but
-signature_refinement has a circular import via utils.py. We test the
-subpackage imports directly (drugreflector.* resolves to drugreflector/ subdir).
-"""
+
+def test_top_level_public_api():
+    """The full public API is importable from the drugreflector package."""
+    from drugreflector import (
+        DrugReflector,
+        EnsembleModel,
+        nnFC,
+        SignatureRefinement,
+        load_h5ad_file,
+        compute_vscores_adata,
+        compute_vscore_two_groups,
+        compute_vscores,
+        pseudobulk_adata,
+        create_synthetic_gene_expression,
+    )
+    for obj in [DrugReflector, EnsembleModel, nnFC, SignatureRefinement,
+                load_h5ad_file, compute_vscores_adata, compute_vscore_two_groups,
+                compute_vscores, pseudobulk_adata, create_synthetic_gene_expression]:
+        assert callable(obj)
+
+
+def test_version():
+    import drugreflector
+    assert drugreflector.__version__ == "1.0.0"
 
 
 def test_subpackage_classes():
@@ -32,7 +52,7 @@ def test_subpackage_utils():
 
 
 def test_signature_refinement_import():
-    from signature_refinement.signature_refinement import SignatureRefinement
+    from drugreflector import SignatureRefinement
     assert callable(SignatureRefinement)
     assert hasattr(SignatureRefinement, "compute_refined_signatures")
     assert hasattr(SignatureRefinement, "compute_learned_signatures")

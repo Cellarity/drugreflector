@@ -70,7 +70,7 @@ drugreflector = "drugreflector.cli:main"
 packages = ["drugreflector", "drugreflector.signature_refinement"]
 
 [tool.setuptools.package-dir]
-drugreflector = "."
+drugreflector = "drugreflector"
 "drugreflector.signature_refinement" = "signature_refinement"
 
 [tool.setuptools.package-data]

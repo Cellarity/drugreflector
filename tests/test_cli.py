@@ -27,7 +27,7 @@ class TestCliParser:
             sys, "argv",
             ["drugreflector", str(tmp_path / "nonexistent.h5ad")],
         )
-        from cli import main
+        from drugreflector.cli import main
         with pytest.raises(SystemExit):
             main()
 
@@ -44,7 +44,7 @@ class TestCliParser:
              "--model2", "/nonexistent/model.pt",
              "--model3", "/nonexistent/model.pt"],
         )
-        from cli import main
+        from drugreflector.cli import main
         with pytest.raises(SystemExit):
             main()
 
@@ -78,7 +78,7 @@ class TestCliEndToEnd:
              "--output", output_path,
              "--n-top", "20"],
         )
-        from cli import main
+        from drugreflector.cli import main
         main()
 
         # Verify output
