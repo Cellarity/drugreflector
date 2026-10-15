@@ -1,0 +1,37 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Zenodo record for the checkpoint version the tests run against
+      CHECKPOINT_RECORD: "17437512"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.14"
+          activate-environment: true
+
+      - name: Restore model checkpoints
+        id: checkpoints
+        uses: actions/cache@v6
+        with:
+          path: checkpoints/*.pt
+          key: zenodo-${{ env.CHECKPOINT_RECORD }}
+
+      - name: Download model checkpoints
+        if: steps.checkpoints.outputs.cache-hit != 'true'
+        run: uvx --from zenodo-get zenodo_get --output-dir checkpoints "$CHECKPOINT_RECORD"
+
+      - name: Install package
+        run: uv pip install --torch-backend cpu ".[test]"
+
+      - name: Run tests
+        run: pytest
