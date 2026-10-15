@@ -353,7 +353,7 @@ def pseudobulk_adata(
 
     # Perform groupby operation
     for i, group_name in enumerate(group_names):
-        group_mask = adata_temp.obs['_TempIndex'] == group_name
+        group_mask = (adata_temp.obs['_TempIndex'] == group_name).to_numpy()
         group_data = X_data[group_mask]
 
         if method == 'sum':
@@ -377,7 +377,6 @@ def pseudobulk_adata(
     bulk_adata = AnnData(
         X=bulk_X,
         var=adata_temp.var.copy(),
-        dtype=X_data.dtype,
     )
 
     # Set observation names
@@ -392,21 +391,20 @@ def pseudobulk_adata(
 
     # Create metadata mapping
     if sample_metadata_obs_cols or sample_id_obs_cols:
-        try:
-            cols_to_use = ['_TempIndex'] + list(sample_id_obs_cols)
-            if sample_metadata_obs_cols:
-                cols_to_use.extend(sample_metadata_obs_cols)
+        cols_to_use = ['_TempIndex'] + list(sample_id_obs_cols)
+        if sample_metadata_obs_cols:
+            cols_to_use.extend(sample_metadata_obs_cols)
 
-            metadata_mapping = (
-                adata_temp.obs[cols_to_use]
-                .drop_duplicates()
-                .set_index('_TempIndex', verify_integrity=True)
-            )
-        except ValueError as e:
+        metadata_mapping = (
+            adata_temp.obs[cols_to_use]
+            .drop_duplicates()
+            .set_index('_TempIndex')
+        )
+        if not metadata_mapping.index.is_unique:
             raise ValueError(
                 'The combination of values in sample_metadata_cols of adata.obs must be '
                 'unique for each value in sample_id_col.'
-            ) from e
+            )
 
         # Merge metadata
         bulk_adata.obs = bulk_adata.obs.merge(
@@ -419,8 +417,8 @@ def pseudobulk_adata(
     # Copy layers if they exist
     if hasattr(adata_temp, 'layers') and adata_temp.layers:
         for layer_name, layer_data in adata_temp.layers.items():
-            if layer_name == layer:
-                continue  # Skip the layer we used for X
+            if layer_name is None or layer_name == layer:
+                continue  # Skip .X (exposed as layers[None] by anndata>=0.12) and the layer we used for X
 
             # Pseudobulk each layer
             is_layer_sparse = sp.issparse(layer_data)
@@ -433,7 +431,7 @@ def pseudobulk_adata(
                 layer_bulk = np.zeros((n_groups, n_genes), dtype=layer_data.dtype)
 
             for i, group_name in enumerate(group_names):
-                group_mask = adata_temp.obs['_TempIndex'] == group_name
+                group_mask = (adata_temp.obs['_TempIndex'] == group_name).to_numpy()
                 group_layer_data = layer_data[group_mask]
 
                 if method == 'sum':

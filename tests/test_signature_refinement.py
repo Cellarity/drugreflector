@@ -169,10 +169,6 @@ class TestLoadNormalizedData:
 # load_counts_data
 # ---------------------------------------------------------------------------
 class TestLoadCountsData:
-    @pytest.mark.xfail(
-        reason="Source bug: counts_data.flatten()[:1000] returns memoryview in newer numpy/anndata",
-        raises=TypeError,
-    )
     def test_basic(self):
         sr = SignatureRefinement(_make_starting_sig(50))
         np.random.seed(10)
@@ -187,9 +183,6 @@ class TestLoadCountsData:
         assert sr.expr is not None
         assert "pseudobulked_counts" in sr.expr.layers
 
-    @pytest.mark.xfail(
-        reason="Source bug: counts_data.flatten()[:1000] returns memoryview in newer numpy/anndata",
-    )
     def test_negative_warns(self):
         sr = SignatureRefinement(_make_starting_sig(5))
         X = np.array([[-1.0, 2.0, 3.0]], dtype=np.float64)
