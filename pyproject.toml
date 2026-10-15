@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drugreflector"
-version = "1.0.0"
+version = "1.0.1"
 description = "A minimal implementation for compound ranking predictions from gene expression signatures using ensemble neural network models"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Ben DeMeo"},
+    {name = "Cellarity", email = "CellarityPublications@cellarity.com"},
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -22,6 +23,9 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -50,17 +54,12 @@ dev = [
     "flake8",
     "mypy",
 ]
-docs = [
-    "sphinx",
-    "sphinx-rtd-theme",
-    "myst-parser",
-]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/drugreflector"
-Repository = "https://github.com/yourusername/drugreflector"
-Documentation = "https://github.com/yourusername/drugreflector#readme"
-"Bug Reports" = "https://github.com/yourusername/drugreflector/issues"
+Homepage = "https://github.com/Cellarity/drugreflector"
+Repository = "https://github.com/Cellarity/drugreflector"
+Documentation = "https://github.com/Cellarity/drugreflector#readme"
+"Bug Reports" = "https://github.com/Cellarity/drugreflector/issues"
 "Model Checkpoints" = "https://doi.org/10.5281/zenodo.16912445"
 
 [project.scripts]

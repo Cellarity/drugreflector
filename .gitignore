@@ -52,5 +52,7 @@ logs/
 outputs/
 results/
 
-# Documentation build
+# Build
+build/
+*.egg-info
 docs/_build/
