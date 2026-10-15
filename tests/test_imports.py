@@ -22,8 +22,9 @@ def test_top_level_public_api():
 
 
 def test_version():
+    from importlib.metadata import version
     import drugreflector
-    assert drugreflector.__version__ == "1.0.0"
+    assert drugreflector.__version__ == version("drugreflector")
 
 
 def test_subpackage_classes():

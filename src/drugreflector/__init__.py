@@ -18,7 +18,9 @@ from .utils import (
 )
 from .signature_refinement import SignatureRefinement
 
-__version__ = "1.0.0"
+from importlib.metadata import version as _version
+
+__version__ = _version("drugreflector")
 __all__ = [
     "DrugReflector",
     "EnsembleModel",

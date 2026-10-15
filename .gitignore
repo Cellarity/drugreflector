@@ -54,5 +54,10 @@ results/
 
 # Build
 build/
+dist/
 *.egg-info
 docs/_build/
+
+# Test coverage
+.coverage
+htmlcov/
