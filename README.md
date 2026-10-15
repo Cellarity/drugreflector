@@ -16,32 +16,24 @@ This package provides tools for virtual drug screening using transcriptional sig
 ### Prerequisites
 
 - Python 3.8+
-- PyTorch
-- NumPy
-- Pandas
-- SciPy
-- AnnData
-- Scanpy (for signature refinement)
+
+The dependencies (PyTorch, NumPy, Pandas, SciPy, AnnData and Scanpy) are installed automatically.
 
 ### Setup
 
-1. Clone this repository:
+1. Install the package directly from GitHub:
+```bash
+pip install git+https://github.com/Cellarity/drugreflector.git
+```
+
+Or clone this repository and install from source:
 ```bash
 git clone git@github.com:Cellarity/drugreflector.git
 cd drugreflector
+pip install .
 ```
 
-Or install via pip:
-```bash
-pip install drugreflector
-```
-
-2. Install dependencies:
-```bash
-pip install torch numpy pandas scipy anndata scanpy
-```
-
-3. Download model checkpoints from Zenodo:
+2. Download model checkpoints from Zenodo:
    - **DOI: 10.5281/zenodo.16912444**
    - Download all checkpoint files and place them in the `checkpoints/` directory
 
@@ -51,24 +43,26 @@ pip3 install zenodo-get # if not already installed
 zenodo_get --output-dir checkpoints 16912444
 ```
 
-4. (optional, for reproducing published results): Download transition signatures. These are scanpy AnnData objects containing v-scores for cell stat transitions in normal hematopoiesis, and between healthy and diseased B-ALL and breast cancer tissue. They can be input to DrugReflector to prioritize compounds, as done in the publication cited below. 
+3. (optional, for reproducing published results): Download transition signatures. These are scanpy AnnData objects containing v-scores for cell stat transitions in normal hematopoiesis, and between healthy and diseased B-ALL and breast cancer tissue. They can be input to DrugReflector to prioritize compounds, as done in the publication cited below. 
     - **DOI: 10.5281/zenodo.16921905**
     
 ## Model Checkpoints
 
 The trained model checkpoints are available on Zenodo at DOI **10.5281/zenodo.16912444**.
 
-After downloading, your directory structure should look like:
+The examples below assume the checkpoints are in a `checkpoints/` directory relative to where you run your code. If you cloned this repository, your directory structure should look like:
 ```
 drugreflector/
 ├── checkpoints/
 │   ├── model_fold_0.pt
 │   ├── model_fold_1.pt
 │   └── model_fold_2.pt
-├── drugreflector/
-│   ├── drug_reflector.py
-│   ├── cli.py
-│   └── ...
+├── src/
+│   └── drugreflector/
+│       ├── drug_reflector.py
+│       ├── cli.py
+│       └── ...
+├── tests/
 └── ...
 ```
 
@@ -137,6 +131,8 @@ print(f"\nAvailable columns: {list(predictions.columns)}")
 DrugReflector accepts v-score data in three formats:
 
 ```python
+from anndata import AnnData
+
 # 1. Pandas Series (single v-score vector)
 # The series name will be used as the transition identifier in outputs
 vscore_series = pd.Series([1.2, -0.8, 0.5, ...], index=['GENE1', 'GENE2', 'GENE3', ...], 
@@ -332,8 +328,9 @@ vscores_adata = compute_vscores(adata, transitions=transitions)
 
 ## Command Line Usage
 
+Installing the package provides a `drugreflector` command (also available as `python -m drugreflector`). The input file should contain v-scores in `.X`:
+
 ```bash
-# After pip install -e .
 drugreflector input.h5ad \
     --model1 checkpoints/model_fold_0.pt \
     --model2 checkpoints/model_fold_1.pt \
@@ -345,13 +342,13 @@ drugreflector input.h5ad \
 
 ### DrugReflector Class
 
-#### `DrugReflector(checkpoint_paths, device='auto')`
-- **checkpoint_paths**: List of paths to model checkpoint files (.pt)
-- **device**: PyTorch device ('cuda', 'cpu', or 'auto')
+#### `DrugReflector(checkpoint_paths)`
+- **checkpoint_paths**: List of paths to the 3 model checkpoint files (.pt)
 
 #### Methods
 - `predict(data, n_top=None)`: Get compound predictions with ranks, scores, probabilities
-- `get_top_compounds(data, n_top=10)`: Get top N compounds as separate DataFrames  
+- `transform(data, ranks=False)`: Get raw prediction scores as an AnnData object
+- `get_top_compounds(data, n_top=20)`: Get top N compounds as separate DataFrames  
 - `predict_top_compounds(data, n_top=50)`: Alias for get_top_compounds
 - `check_gene_coverage(gene_names)`: Check how many genes are recognized by the model
 
@@ -369,9 +366,10 @@ drugreflector input.h5ad \
 
 ### Utility Functions
 
-- `compute_vscore_two_groups(group0, group1)`: V-score between two arrays
-- `compute_vscores_adata(adata, group_col, group0_value, group1_value, layer=None)`: V-scores from AnnData
-- `pseudobulk_adata(adata, sample_id_obs_cols, method='sum')`: Pseudobulk expression data
+- `compute_vscore_two_groups(group1, group2)`: V-score between two arrays
+- `compute_vscores_adata(adata, group_col, group1_value, group2_value, layer=None)`: V-scores from AnnData
+- `compute_vscores(adata, transitions=None)`: V-scores for one or more transitions, as AnnData
+- `pseudobulk_adata(adata, sample_id_obs_cols, layer=None, method='sum')`: Pseudobulk expression data
 - `load_h5ad_file(filepath)`: Load and preprocess H5AD files
 - `create_synthetic_gene_expression(n_obs, n_vars, ...)`: Generate synthetic data for testing
 
@@ -460,6 +458,16 @@ for gene_info in coverage['gene_mapping'][:5]:  # Show first 5
     if gene_info['original'] != gene_info['processed']:
         print(f"  {gene_info['original']} -> {gene_info['processed']} ({'found' if gene_info['found'] else 'not found'})")
 ```
+
+## Development
+
+Install the package in editable mode with the test dependencies, then run the test suite from the repository root:
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+Integration tests that need the model checkpoints are skipped unless the checkpoints are in `checkpoints/`.
 
 ## Support
 
