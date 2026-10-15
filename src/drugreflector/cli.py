@@ -79,7 +79,7 @@ def main():
     for model_path in model_paths:
         if not Path(model_path).exists():
             print(f"Error: Model checkpoint '{model_path}' not found", file=sys.stderr)
-            print("Please download model checkpoints from Zenodo DOI: 10.5281/zenodo.16912445", file=sys.stderr)
+            print("Please download model checkpoints from Zenodo DOI: 10.5281/zenodo.16912444", file=sys.stderr)
             sys.exit(1)
     
     try:

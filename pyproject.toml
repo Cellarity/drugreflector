@@ -63,7 +63,7 @@ Homepage = "https://github.com/Cellarity/drugreflector"
 Repository = "https://github.com/Cellarity/drugreflector"
 Documentation = "https://github.com/Cellarity/drugreflector#readme"
 "Bug Reports" = "https://github.com/Cellarity/drugreflector/issues"
-"Model Checkpoints" = "https://doi.org/10.5281/zenodo.16912445"
+"Model Checkpoints" = "https://doi.org/10.5281/zenodo.16912444"
 
 [project.scripts]
 drugreflector = "drugreflector.cli:main"

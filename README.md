@@ -386,7 +386,7 @@ drugreflector input.h5ad \
 - **Preprocessing**: Log-transformed, normalized expression values
 
 ### Model Checkpoints
-- **Source**: Zenodo DOI 10.5281/zenodo.16912445
+- **Source**: Zenodo DOI 10.5281/zenodo.16912444
 - **Format**: PyTorch .pt files
 - **Count**: 3 model files (ensemble of 3-fold cross-validation)
 
@@ -403,7 +403,7 @@ If you use this package, please cite:
 [To be added upon publication]
 ```
 
-Model checkpoints: DOI 10.5281/zenodo.16912445
+Model checkpoints: DOI 10.5281/zenodo.16912444
 
 ## License
 
