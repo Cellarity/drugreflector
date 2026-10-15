@@ -49,7 +49,7 @@ top_compounds = model.get_top_compounds(adata, n_top=10)
     """)
     
     print("\nCommand-line usage:")
-    print("python drugreflector/predict.py input.h5ad --model1 checkpoints/model_fold_0.pt --model2 checkpoints/model_fold_1.pt --model3 checkpoints/model_fold_2.pt")
+    print("drugreflector input.h5ad --model1 checkpoints/model_fold_0.pt --model2 checkpoints/model_fold_1.pt --model3 checkpoints/model_fold_2.pt")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,16 @@ CHECKPOINT_PATHS = [
 ]
 
 
+def pytest_collection_modifyitems(config, items):
+    """Skip integration tests when the Zenodo checkpoints have not been downloaded."""
+    if all(os.path.exists(p) for p in CHECKPOINT_PATHS):
+        return
+    skip = pytest.mark.skip(reason=f"model checkpoints not found in {CHECKPOINT_DIR}")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip)
+
+
 # ---------------------------------------------------------------------------
 # Session-scoped: extract gene names from first checkpoint (loaded once)
 # ---------------------------------------------------------------------------
