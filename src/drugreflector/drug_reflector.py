@@ -76,14 +76,14 @@ class DrugReflector:
             # Use the series name if available, otherwise default to 'vscore'
             obs_name = data.name if data.name is not None else 'vscore'
             vscores_adata = AnnData(
-                X=data.values.reshape(1, -1),
+                X=data.to_numpy(copy=True).reshape(1, -1),
                 var=pd.DataFrame(index=data.index),
                 obs=pd.DataFrame(index=[obs_name])
             )
         elif isinstance(data, pd.DataFrame):
             # Rows = transitions, columns = genes
             vscores_adata = AnnData(
-                X=data.values,
+                X=data.to_numpy(copy=True),
                 var=pd.DataFrame(index=data.columns),
                 obs=pd.DataFrame(index=data.index)
             )

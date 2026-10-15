@@ -194,6 +194,20 @@ class TestPredictStructure:
         result = dr.predict(s, n_top=5)
         assert len(result) <= 5
 
+    @pytest.mark.parametrize("as_frame", [False, True])
+    def test_input_not_mutated(self, mock_checkpoint_factory, as_frame):
+        dr = _build_mock_dr(mock_checkpoint_factory, input_size=20, output_size=10)
+        gene_names = [f"GENE{i}" for i in range(20)]
+        data = pd.Series(np.random.normal(0, 5, 20), index=gene_names, name="test_obs")
+        if as_frame:
+            data = data.to_frame().T
+        original = data.copy()
+        dr.predict(data)
+        if as_frame:
+            pd.testing.assert_frame_equal(data, original)
+        else:
+            pd.testing.assert_series_equal(data, original)
+
 
 class TestGetTopCompounds:
     def test_returns_dict(self, mock_checkpoint_factory):

@@ -85,7 +85,7 @@ class SignatureRefinement:
             counts_data = adata.X
             
         # Check if data looks like counts (non-negative integers)
-        if hasattr(counts_data, 'data'):  # sparse matrix
+        if sp.issparse(counts_data):
             sample_values = counts_data.data[:1000]  # Check first 1000 values
         else:
             sample_values = counts_data.flatten()[:1000]
@@ -501,6 +501,8 @@ class SignatureRefinement:
             # Copy layers structure from learned signatures (but expand to full gene set)
             if hasattr(self.learned_signatures, 'layers') and self.learned_signatures.layers:
                 for layer_name, layer_data in self.learned_signatures.layers.items():
+                    if layer_name is None:
+                        continue  # .X, exposed as layers[None] by anndata>=0.12
                     # Initialize layer with zeros for all genes
                     full_layer = np.zeros((len(refined_signatures), len(self.starting_signature)))
                     

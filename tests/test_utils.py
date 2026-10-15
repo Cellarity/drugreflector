@@ -322,20 +322,22 @@ class TestPseudobulkAdata:
     def test_sparse_input(self):
         adata = self._make_adata()
         adata.X = sp.csr_matrix(adata.X)
-        # pseudobulk_adata uses boolean mask from pandas on sparse matrix;
-        # newer scipy requires .values to convert pandas bool Series to array
-        # This test verifies the function handles sparse input (may fail if
-        # scipy/pandas version incompatibility exists in the source code)
-        try:
-            result = pseudobulk_adata(adata, sample_id_obs_cols=["sample"], method="sum")
-            assert result.n_obs == 2
-            X = result.X.toarray() if sp.issparse(result.X) else result.X
-            a_idx = list(result.obs.index).index("A")
-            np.testing.assert_allclose(X[a_idx], [12, 15, 18])
-        except AttributeError:
-            # Known issue: scipy sparse indexing with pandas boolean Series
-            # fails on newer scipy versions - this is a source code bug
-            pytest.skip("pseudobulk_adata sparse indexing incompatible with current scipy version")
+        result = pseudobulk_adata(adata, sample_id_obs_cols=["sample"], method="sum")
+        assert result.n_obs == 2
+        X = result.X.toarray() if sp.issparse(result.X) else result.X
+        a_idx = list(result.obs.index).index("A")
+        np.testing.assert_allclose(X[a_idx], [12, 15, 18])
+
+    def test_preserves_dtype(self):
+        adata = self._make_adata()
+        result = pseudobulk_adata(adata, sample_id_obs_cols=["sample"], method="sum")
+        assert result.X.dtype == adata.X.dtype
+
+    def test_inconsistent_metadata_raises(self):
+        adata = self._make_adata()
+        adata.obs["batch"] = ["b1", "b2", "b1", "b1", "b1", "b1"]
+        with pytest.raises(ValueError, match="must be unique"):
+            pseudobulk_adata(adata, sample_id_obs_cols=["sample"], sample_metadata_obs_cols=["batch"])
 
     def test_multiple_id_cols(self):
         X = np.ones((4, 2))
