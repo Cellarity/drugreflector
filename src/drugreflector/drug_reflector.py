@@ -128,7 +128,6 @@ class DrugReflector:
         vscores.var_names = vscores.var_names.str.upper()
         
         # Remove common prefixes/suffixes that aren't HGNC
-        vscores.var_names = vscores.var_names.str.replace(r'^ENSG\d+\.', '', regex=True)  # Remove Ensembl IDs
         vscores.var_names = vscores.var_names.str.replace(r'_AT$', '', regex=True)  # Remove Affymetrix suffixes
         vscores.var_names = vscores.var_names.str.replace(r'\..*$', '', regex=True)  # Remove version numbers
         vscores.var_names = vscores.var_names.str.replace(r'[^A-Z0-9\-]', '', regex=True)  # Keep only alphanumeric and hyphens
@@ -318,7 +317,6 @@ class DrugReflector:
         
         # Apply HGNC preprocessing
         processed_genes = input_genes.str.upper()
-        processed_genes = processed_genes.str.replace(r'^ENSG\d+\.', '', regex=True)
         processed_genes = processed_genes.str.replace(r'_AT$', '', regex=True)
         processed_genes = processed_genes.str.replace(r'\..*$', '', regex=True)
         processed_genes = processed_genes.str.replace(r'[^A-Z0-9\-]', '', regex=True)
