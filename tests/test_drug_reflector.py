@@ -153,6 +153,15 @@ class TestCheckGeneCoverage:
         assert result["total_found"] == 10
         assert len(result["missing_genes"]) == 5
 
+    def test_ensembl_version_stripped(self, mock_checkpoint_factory):
+        dr = _build_mock_dr(
+            mock_checkpoint_factory, input_size=2,
+            input_names=["ENSG00000141510", "TP53"],
+        )
+        result = dr.check_gene_coverage(["ENSG00000141510.11", "TP53"])
+        assert result["gene_mapping"][0]["processed"] == "ENSG00000141510"
+        assert result["total_found"] == 2
+
 
 # ---------------------------------------------------------------------------
 # predict output structure (mock)
